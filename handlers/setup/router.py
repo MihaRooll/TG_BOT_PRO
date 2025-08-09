@@ -17,6 +17,7 @@ from . import A9_InventorySizes   as INV
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
     chat_id = c.message.chat.id
+    bot.answer_callback_query(c.id)
     ensure(chat_id, c.message.message_id)
     parts = c.data.split(":")
     cmd, *rest = parts[1:]
@@ -26,7 +27,11 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "bind_hint":
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-        edit(chat_id, "📌 Привязка общего чата:\\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\\n2) Выполните там команду /bind_here.\\nБот запомнит чат (и тему, если есть).", kb)
+        edit(
+            chat_id,
+            "📌 Привязка общего чата:\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\n2) Выполните там команду /bind_here.\nБот запомнит чат (и тему, если есть).",
+            kb,
+        )
         return
 
     # --- Step 1: Merch ---
