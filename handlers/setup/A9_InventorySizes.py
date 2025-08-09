@@ -53,7 +53,7 @@ def open_qty_spinner(chat_id: int, mk: str, ck: str, sz: str):
     )
     kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_sz_save:{mk}:{ck}:{sz}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к размерам", callback_data=f"setup:inv_sizes_sizes:{mk}:{ck}"))
-    edit(chat_id, f"Введите количество для <b>{mk}/{ck}/{sz}</b>:\\nТекущее: <b>{cur}</b>", kb)
+    edit(chat_id, f"Введите количество для <b>{mk}/{ck}/{sz}</b>:\nТекущее: <b>{cur}</b>", kb)
 
 def adjust_qty(chat_id: int, mk: str, ck: str, sz: str, delta: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_merch", {}).setdefault(mk, {}).setdefault(ck, {}).setdefault("sizes", {})

@@ -1,20 +1,26 @@
 # -*- coding: utf-8 -*-
-# Регистрация всех хэндлеров (импорты регистрируют декораторы)
-from handlers import start, order_flow, errors  # noqa: F401
-from bot import bot  # если уже есть — оставьте как было            # noqa: F401
+"""Регистрирует все хэндлеры бота."""
+
+from bot import bot  # noqa: F401  # ensure bot is created
 from modules.router import register_module_routes
 
-def register_routes():
-    # Базовые обработчики
-    from handlers import start  # noqa: F401
 
-    # Мастер настройки: достаточно импортировать модуль,
-    # его декораторы сами зарегистрируют хэндлеры.
+def register_routes() -> None:
+    """Импортирует модули с декораторами хэндлеров."""
+    from handlers import start, errors  # noqa: F401
+
+    # Мастер настройки
     from handlers.setup import router as setup_router  # noqa: F401
 
-    # Опционально: если у вас есть другие хэндлеры (например, оформление заказов),
-    # импортируйте их здесь. Если модуля нет — просто пропускаем.
-    try:
+    # Дополнительные обработчики (опционально)
+    try:  # pragma: no cover - зависит от наличия модулей
         from handlers import order_flow  # noqa: F401
     except ImportError:
         pass
+
+    register_module_routes()
+
+
+# Автоматически регистрируем при импорте модуля
+register_routes()
+

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from bot import bot
-from .core import WIZ, ensure, edit
+from .core import WIZ, ensure, edit, home_text
 
 from . import A0_Overview as O
 from . import A1_Merch    as M
@@ -17,6 +17,7 @@ from . import A9_InventorySizes   as INV
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
     chat_id = c.message.chat.id
+    bot.answer_callback_query(c.id)
     ensure(chat_id, c.message.message_id)
     parts = c.data.split(":")
     cmd, *rest = parts[1:]
@@ -26,7 +27,11 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "bind_hint":
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-        edit(chat_id, "📌 Привязка общего чата:\\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\\n2) Выполните там команду /bind_here.\\nБот запомнит чат (и тему, если есть).", kb)
+        edit(
+            chat_id,
+            "📌 Привязка общего чата:\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\n2) Выполните там команду /bind_here.\nБот запомнит чат (и тему, если есть).",
+            kb,
+        )
         return
 
     # --- Step 1: Merch ---
@@ -73,10 +78,6 @@ def setup_router(c: types.CallbackQuery):
         edit(chat_id, "Шаг 3/4. Выберите вид мерча для ввода номеров макетов.", kb)
         WIZ[chat_id]["stage"] = "tmpls_pick"; return
     if cmd == "tmpl_nums_for":         TNUM.start_for_merch(chat_id, rest[0]); return
-    if cmd == "tmpl_num_key":          TNUM.keypress(chat_id, rest[0]); return
-    if cmd == "tmpl_num_back":         TNUM.backspace(chat_id); return
-    if cmd == "tmpl_num_clear":        TNUM.clearbuf(chat_id); return
-    if cmd == "tmpl_num_add":          TNUM.add_number(chat_id); return
     if cmd == "tmpl_num_done":         TNUM.done(chat_id); return
     if cmd == "tmpl_color_toggle":     TCOL.toggle_color(chat_id, rest[0], rest[1], rest[2]); return
     if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
@@ -115,7 +116,8 @@ def _finish(chat_id: int):
     save_numbers_inv(tmp.get("_inv_numbers", {}))
     save_templates_inv(tmp.get("_inv_tmpls", {}))
 
-    edit(chat_id, "Готово! ☑ Бот настроен и готов к приёму заказов. Нажмите /start.", None)
+    summary = home_text(tmp)
+    edit(chat_id, summary + "\n\n<b>Готово! ☑ Бот настроен и готов к приёму заказов. Нажмите /start.</b>", None)
     WIZ.pop(chat_id, None)
 
 # ----------- удаляем пользовательские сообщения и обрабатываем ввод ----------
@@ -139,13 +141,20 @@ def _during_setup(m: types.Message):
         from .A1_Merch import handle_custom_sizes; mk = st.split(":")[1]; handle_custom_sizes(chat_id, mk, text)
     elif st == "pal_add" and text:
         from .A4_TextPalette import handle_custom_color; handle_custom_color(chat_id, text)
+    elif st.startswith("tmpl_nums_input:") and text:
+        mk = st.split(":")[1]
+        from .A6_TemplatesNumbers import handle_text
+        handle_text(chat_id, mk, text)
     # --- коллажи (фото) ---
     elif st.startswith("tmpl_collages:") and m.content_type == "photo":
         mk = st.split(":")[1]
         d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
         f_id = m.photo[-1].file_id
         col = d.setdefault("collages", [])
-        if len(col) < 10: col.append(f_id)
+        if len(col) < 10:
+            col.append(f_id)
+        from .A8_TemplatesCollages import render_progress
+        render_progress(chat_id)
     # --- лимиты по шагам ---
     elif st == "limits_len" and text:
         try:
@@ -159,5 +168,14 @@ def _during_setup(m: types.Message):
             from .A2_Letters import set_limit_num; set_limit_num(chat_id, val)
         except Exception:
             from .A2_Letters import ask_limit_num; ask_limit_num(chat_id)
+    elif st.startswith("inv_sz_qty:") and text:
+        mk, ck, sz = st.split(":")[1:]
+        try:
+            val = int(text)
+            from .A9_InventorySizes import set_qty
+            set_qty(chat_id, mk, ck, sz, val)
+        except Exception:
+            from .A9_InventorySizes import open_qty_spinner
+            open_qty_spinner(chat_id, mk, ck, sz)
     # --- удаляем любое пользовательское сообщение ---
     _safe_del(chat_id, m.message_id)
