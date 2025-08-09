@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 👇 IMAGE = <username в lower>/tg-bot-pro
+      # IMAGE = <dockerhub_username в нижнем регистре>/tg-bot-pro
       - name: Set IMAGE env (lowercase)
         run: echo "IMAGE=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')/tg-bot-pro" >> $GITHUB_ENV
 
@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ВАЖНО: задать IMAGE в этом job (lowercase username)
+      # та же переменная IMAGE для Windows-джобы
       - name: Set IMAGE env (lowercase)
         shell: powershell
         run: |
@@ -75,13 +75,23 @@ jobs:
           Write-Host "Pulling $($env:IMAGE):latest"
           docker pull "$($env:IMAGE):latest"
 
+      - name: Compose config (debug)
+        shell: powershell
+        run: |
+          Write-Host "Using compose.yml with IMAGE=$($env:IMAGE)"
+          docker compose -f compose.yml config
+
       - name: Up stack
         shell: powershell
         run: |
-          docker compose -p tg_bot_pro up -d --remove-orphans 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro up -d --remove-orphans }
+          docker compose -f compose.yml -p tg_bot_pro up -d --remove-orphans --no-build
 
       - name: Status & logs
         shell: powershell
         run: |
-          docker compose -p tg_bot_pro ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro ps }
-          docker compose -p tg_bot_pro logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro logs --no-color --tail=80 }
+          docker compose -f compose.yml -p tg_bot_pro ps
+          docker compose -f compose.yml -p tg_bot_pro logs --no-color --tail=80
+
+      - name: Cleanup
+        shell: powershell
+        run: docker image prune -f

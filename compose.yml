@@ -1,5 +1,8 @@
 services:
   bot:
-    image: miharooll/tg-bot-pro:latest   # именно в нижнем регистре
+    image: ${IMAGE}:latest          # IMAGE пробрасывается из workflow
     container_name: tg-bot-pro
     restart: unless-stopped
+    # env_file: .env
+    # environment:
+    #   - TZ=Europe/Moscow
