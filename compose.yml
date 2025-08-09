@@ -1,10 +1,12 @@
+# compose.yml — прод
 services:
   bot:
-    image: ${IMAGE}:pr-${PR_NUM}-latest
-    container_name: tg-bot-pro-pr-${PR_NUM}
+    image: ${IMAGE}:latest   # IMAGE устанавливаем в workflow (deploy job)
+    container_name: tg-bot-pro
     restart: unless-stopped
-    # Если нужна изоляция токенов на превью — раскомментируй и добавь секрет:
+    # Если нужно — добавь переменные/файлы окружения:
     # environment:
-    #   - BOT_TOKEN=${PREVIEW_BOT_TOKEN}
+    #   - TZ=Europe/Moscow
+    #   - BOT_TOKEN=${BOT_TOKEN}
     # env_file:
-    #   - .env.preview
+    #   - .env
