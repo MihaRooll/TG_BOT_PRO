@@ -15,7 +15,7 @@ concurrency:
 jobs:
   deploy:
     # Для Windows self-hosted раннера:
-    runs-on: [self-hosted, windows, X64]
+    runs-on: self-hosted   # ← вместо [self-hosted, windows, X64]
 
     defaults:
       run:
