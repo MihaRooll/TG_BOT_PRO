@@ -10,15 +10,19 @@ permissions:
   packages: write
 
 concurrency:
-  group: deploy-main
+  group: deploy-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
+
+# 🔽 Единые переменные
+env:
+  IMAGE: ${{ toLower(format('{0}/tg-bot-pro', secrets.DOCKERHUB_USERNAME)) }}  # имя образа в нижнем регистре
+  STACK: tg_bot_pro
 
 jobs:
   build-and-push-docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
@@ -34,19 +38,18 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-pro:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/tg-bot-pro:${{ github.sha }}
-
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
 
   deploy:
     needs: build-and-push-docker
-    runs-on: [self-hosted, Windows, X64, tg-bot]   # чтобы точно попало на твой раннер с лейблом tg-bot
+    runs-on: [self-hosted, Windows, X64, tg-bot]   # таргетим твой раннер
     timeout-minutes: 30
     steps:
-      - name: Checkout (для compose.yml)
+      - name: Checkout (compose.yml)
         uses: actions/checkout@v4
 
-      - name: Print runner info
+      - name: Runner & Docker info
         shell: powershell
         run: |
           whoami
@@ -60,24 +63,24 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Pull new image
+      # 🔽 Явно тянем образ; без подавления stderr, чтобы видеть реальную ошибку
+      - name: Pull image
         shell: powershell
         run: |
-          docker compose -p tg_bot_pro pull 2>$null
-          if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro pull }
+          docker pull "$env:IMAGE:latest"
 
-      - name: Recreate containers
+      # 🔽 Поднимаем стек (compose подтянет image из compose.yml)
+      - name: Up stack
         shell: powershell
         run: |
-          docker compose -p tg_bot_pro up -d --remove-orphans 2>$null
-          if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro up -d --remove-orphans }
+          docker compose -p $env:STACK up -d --remove-orphans 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK up -d --remove-orphans }
 
-      - name: Show status & last logs
+      - name: Status & logs
         shell: powershell
         run: |
-          docker compose -p tg_bot_pro ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro ps }
-          docker compose -p tg_bot_pro logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro logs --no-color --tail=80 }
+          docker compose -p $env:STACK ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK ps }
+          docker compose -p $env:STACK logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK logs --no-color --tail=80 }
 
-      - name: Cleanup old images
+      - name: Cleanup
         shell: powershell
         run: docker image prune -f

@@ -1,9 +1,5 @@
-# compose.yml
 services:
   bot:
-    image: miharooll/tg-bot-pro:latest   # ← именно образ из DockerHub
+    image: miharooll/tg-bot-pro:latest   # ВНИЗ РЕГИСТР!
     container_name: tg-bot-pro
     restart: unless-stopped
-    # env_file: .env
-    # environment:
-    #   - TZ=Europe/Moscow
