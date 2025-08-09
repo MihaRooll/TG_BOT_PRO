@@ -1,0 +1,13 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tg-bot-pro
+    restart: unless-stopped
+    # При необходимости выставь часовой пояс:
+    # environment:
+    #   - TZ=Europe/Moscow
+    # Если позже перенесёшь ключи в .env:
+    # env_file:
+    #   - .env

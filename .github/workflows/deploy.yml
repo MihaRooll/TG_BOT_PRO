@@ -1,0 +1,48 @@
+name: Deploy (self-hosted Docker)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Для Windows self-hosted раннера:
+    runs-on: [self-hosted, windows, X64]
+
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker info
+        run: |
+          docker version
+          docker compose version
+
+      - name: Stop previous stack (if any)
+        run: |
+          docker compose -p tg_bot_pro down --remove-orphans || echo "No previous stack"
+
+      - name: Build and start
+        run: |
+          docker compose -p tg_bot_pro up -d --build
+
+      - name: Show status & last logs
+        run: |
+          docker compose -p tg_bot_pro ps
+          docker compose -p tg_bot_pro logs --no-color --tail=50
+
+      - name: Cleanup old images
+        run: docker image prune -f
