@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
-  pull-requests: write   # нужно для комментариев в PR
+  pull-requests: write
 
 concurrency:
   group: pr-preview-${{ github.event.pull_request.number }}
@@ -77,17 +77,18 @@ jobs:
         run: |
           docker pull "$($env:IMAGE):pr-$($env:PR_NUM)-latest"
 
-      - name: Ensure compose.preview.yml exists (generate default if missing)
+      - name: Ensure compose.preview.yml exists
         shell: powershell
         run: |
           if (!(Test-Path 'compose.preview.yml')) {
-            @"
-services:
-  bot:
-    image: `${IMAGE}:pr-`${PR_NUM}-latest
-    container_name: tg-bot-pro-pr-`${PR_NUM}
-    restart: unless-stopped
-"@ | Out-File -FilePath 'compose.preview.yml' -Encoding UTF8
+            $lines = @(
+              'services:',
+              '  bot:',
+              ('    image: ' + $env:IMAGE + ':pr-' + $env:PR_NUM + '-latest'),
+              ('    container_name: tg-bot-pro-pr-' + $env:PR_NUM),
+              '    restart: unless-stopped'
+            )
+            Set-Content -Path 'compose.preview.yml' -Value $lines -Encoding UTF8
           }
 
       - name: Up preview stack
@@ -95,7 +96,6 @@ services:
         run: |
           docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM up -d --remove-orphans --no-build
 
-      # ===== ЛОГИ: сбор, маскировка, артефакт, комментарий в PR =====
       - name: Collect preview logs (always)
         shell: powershell
         if: always()
@@ -111,7 +111,7 @@ services:
           $c = Get-Content -Path 'preview.log' -Raw -ErrorAction SilentlyContinue
           if ($null -eq $c) { $c = '' }
           Add-Type -AssemblyName 'System.Text.RegularExpressions'
-          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')  # Telegram
+          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')
           $c = [System.Text.RegularExpressions.Regex]::Replace($c, '(?i)(BOT_TOKEN|API_KEY|TOKEN|SECRET)\s*[:=]\s*([^\s]+)', '$1=***')
           Set-Content -Path 'preview.sanitized.log' -Value $c -Encoding UTF8
           (Get-Content 'preview.sanitized.log' -Tail 200) | Out-File 'pr-tail.log' -Encoding UTF8
@@ -142,7 +142,7 @@ services:
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: pr,
-              body: `🧪 Preview logs (last 200 lines):\n${body}`
+              body: "🧪 Preview logs (last 200 lines):\n" + body
             });
 
       - name: Step Summary (tail)
