@@ -1,5 +1,5 @@
 services:
   bot:
-    image: miharooll/tg-bot-pro:latest   # ВНИЗ РЕГИСТР!
+    image: miharooll/tg-bot-pro:latest   # в нижнем регистре!
     container_name: tg-bot-pro
     restart: unless-stopped

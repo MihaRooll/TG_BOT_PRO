@@ -13,22 +13,21 @@ concurrency:
   group: deploy-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
 
-# 🔽 Единые переменные
-env:
-  IMAGE: ${{ toLower(format('{0}/tg-bot-pro', secrets.DOCKERHUB_USERNAME)) }}  # имя образа в нижнем регистре
-  STACK: tg_bot_pro
-
 jobs:
   build-and-push-docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # 👇 IMAGE = <username в lower>/tg-bot-pro
+      - name: Set IMAGE env (lowercase)
+        run: echo "IMAGE=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')/tg-bot-pro" >> $GITHUB_ENV
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
-          registry: docker.io
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
@@ -43,11 +42,17 @@ jobs:
 
   deploy:
     needs: build-and-push-docker
-    runs-on: [self-hosted, Windows, X64, tg-bot]   # таргетим твой раннер
+    runs-on: [self-hosted, Windows, X64, tg-bot]
     timeout-minutes: 30
     steps:
-      - name: Checkout (compose.yml)
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      # 👇 та же переменная IMAGE на Windows
+      - name: Set IMAGE env (lowercase)
+        shell: powershell
+        run: |
+          $u='${{ secrets.DOCKERHUB_USERNAME }}'.ToLower()
+          "IMAGE=$u/tg-bot-pro" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Runner & Docker info
         shell: powershell
@@ -63,23 +68,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 🔽 Явно тянем образ; без подавления stderr, чтобы видеть реальную ошибку
       - name: Pull image
         shell: powershell
-        run: |
-          docker pull "$env:IMAGE:latest"
+        run: docker pull "$env:IMAGE:latest"
 
-      # 🔽 Поднимаем стек (compose подтянет image из compose.yml)
       - name: Up stack
         shell: powershell
         run: |
-          docker compose -p $env:STACK up -d --remove-orphans 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK up -d --remove-orphans }
+          docker compose -p tg_bot_pro up -d --remove-orphans 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro up -d --remove-orphans }
 
       - name: Status & logs
         shell: powershell
         run: |
-          docker compose -p $env:STACK ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK ps }
-          docker compose -p $env:STACK logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p $env:STACK logs --no-color --tail=80 }
+          docker compose -p tg_bot_pro ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro ps }
+          docker compose -p tg_bot_pro logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro logs --no-color --tail=80 }
 
       - name: Cleanup
         shell: powershell
