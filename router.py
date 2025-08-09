@@ -1,9 +1,20 @@
-# handlers/setup/router.py
 # -*- coding: utf-8 -*-
-from telebot import types
-from bot import bot
+# Регистрация всех хэндлеров (импорты регистрируют декораторы)
+from handlers import start, order_flow, errors  # noqa: F401
+from bot import bot  # если уже есть — оставьте как было            # noqa: F401
+from modules.router import register_module_routes
 
-# Пример хэндлера мастера настройки
-@bot.message_handler(commands=["setup"])
-def setup_start(message: types.Message):
-    bot.reply_to(message, "Мастер настройки запущен ✅")
+def register_routes():
+    # Базовые обработчики
+    from handlers import start  # noqa: F401
+
+    # Мастер настройки: достаточно импортировать модуль,
+    # его декораторы сами зарегистрируют хэндлеры.
+    from handlers.setup import router as setup_router  # noqa: F401
+
+    # Опционально: если у вас есть другие хэндлеры (например, оформление заказов),
+    # импортируйте их здесь. Если модуля нет — просто пропускаем.
+    try:
+        from handlers import order_flow  # noqa: F401
+    except ImportError:
+        pass
