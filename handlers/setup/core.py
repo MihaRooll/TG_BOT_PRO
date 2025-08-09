@@ -96,33 +96,37 @@ def home_text(d: dict) -> str:
     inv_numbers = d.get("_inv_numbers", {}) if feats.get("numbers") else True
     inv_tmpls   = d.get("_inv_tmpls", {})   if nums_set else True
 
-    block = []
-    block.append("<b>🎛 <i>МАСТЕР НАСТРОЙКИ</i></b>\\n")
-    block.append(f"1. 🛍 Мерч [{_on_off(merch_on)}]")
-    block.append(f"   • Цвета:   {'✅' if colors_ok else '❌'}")
-    block.append(f"   • Размеры: {'✅' if sizes_ok  else '❌'}\\n")
-    block.append(f"2. 🔤 Буквы [{_on_off(feats.get('letters', False))}]")
-    alph = []
+    block: List[str] = []
+    block.append("<b>🎛 МАСТЕР НАСТРОЙКИ</b>\\n")
+
+    block.append(f"🛍 Мерч [{_on_off(merch_on)}]")
+    block.append(f"├─ Цвета: {'✅' if colors_ok else '❌'}")
+    block.append(f"└─ Размеры: {'✅' if sizes_ok else '❌'}\\n")
+
+    block.append(f"🔤 Буквы [{_on_off(feats.get('letters', False))}]")
+    alph: List[str] = []
     if rules.get('allow_latin'): alph.append("LAT")
     if rules.get('allow_cyrillic'): alph.append("CYR")
     alph_str = "/".join(alph) if alph else "—"
-    block.append(f"   • Алфавит: {alph_str} ▸")
-    block.append(f"   • Пробел: {'ДА ✔️' if rules.get('allow_space') else 'НЕТ ✖️'}")
-    block.append("   • Пределы:")
-    block.append(f"     • Текст: ≤{rules.get('max_text_len','—')} симв")
-    block.append(f"     • Номер: ≤{rules.get('max_number','—')}")
-    block.append(f"   • Палитра: {(' | ').join(pal) if pal else '—'}\\n")
-    block.append(f"3. 🔢 Цифры [{_on_off(feats.get('numbers', False))}]")
-    block.append(f"   • Соответствия: Мерч/Цвет → Цвет текста {'✅' if mapping_ok else '❌'}\\n")
-    block.append(f"4. 🖼 Макеты [{_on_off(nums_set)}]")
-    block.append(f"   • Номера: {'✅' if nums_set else '❌'}")
-    block.append(f"   • Коллажи: {coll_count} {'🟢' if coll_count else '🚫'}\\n")
-    block.append(f"5. 📦 Остатки [{_on_off(bool(inv_merch))}]")
-    block.append(f"   • Размеры: {'✅' if bool(inv_merch)   else '❌'}")
-    block.append(f"   • Буквы:  {'✅' if bool(inv_letters) else '❌'}")
-    block.append(f"   • Цифры:  {'✅' if bool(inv_numbers) else '❌'}")
-    block.append(f"   • Макеты: {'✅' if bool(inv_tmpls)   else '❌'}\\n")
-    # дерево мерча
-    block.append("<b>Структура мерча</b>")
-    block.append(merch_tree(d))
+    block.append(f"├─ Алфавит: {alph_str} — ▸")
+    block.append(f"├─ Пробел: {'ДА ✔️' if rules.get('allow_space') else 'НЕТ ✖️'}")
+    block.append("├─ Пределы:")
+    block.append(f"│ ├─ Текст: ≤ {rules.get('max_text_len', '—')} симв")
+    block.append(f"│ └─ Номер: ≤ {rules.get('max_number', '—')}")
+    block.append(f"└─ Палитра: {(' | ').join(pal) if pal else '—'}\\n")
+
+    block.append(f"🔢 Цифры [{_on_off(feats.get('numbers', False))}]")
+    block.append("└─ Соответствия:")
+    block.append(f"Мерч/Цвет → Цвет текста {'✅' if mapping_ok else '❌'}\\n")
+
+    block.append(f"🖼 Макеты [{_on_off(nums_set)}]")
+    block.append(f"├─ Номера: {'✅' if nums_set else '❌'}")
+    block.append(f"└─ Коллажи: {coll_count} {'🟢' if coll_count else '🚫'}\\n")
+
+    block.append(f"📦 Остатки [{_on_off(bool(inv_merch))}]")
+    block.append(f"├─ Размеры: {'✅' if bool(inv_merch) else '❌'}")
+    block.append(f"├─ Буквы: {'✅' if bool(inv_letters) else '❌'}")
+    block.append(f"├─ Цифры: {'✅' if bool(inv_numbers) else '❌'}")
+    block.append(f"└─ Макеты: {'✅' if bool(inv_tmpls) else '❌'}")
+
     return "\\n".join(block)
