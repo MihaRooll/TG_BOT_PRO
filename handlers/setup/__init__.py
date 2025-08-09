@@ -1,2 +1,3 @@
 # -*- coding: utf-8 -*-
-# package marker for handlers.setup
+# package marker — хэндлеры регистрируются импортом router.py
+from . import router  # noqa: F401

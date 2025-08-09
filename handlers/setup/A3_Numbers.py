@@ -1,2 +1,2 @@
 # -*- coding: utf-8 -*-
-# reserved for future numeric-specific options
+# reserved for future numeric options
