@@ -40,14 +40,14 @@ jobs:
 
   deploy:
     needs: build-and-push-docker
-    runs-on: self-hosted
+    runs-on: [self-hosted, Windows, X64, tg-bot]   # чтобы точно попало на твой раннер с лейблом tg-bot
     timeout-minutes: 30
     steps:
       - name: Checkout (для compose.yml)
         uses: actions/checkout@v4
 
       - name: Print runner info
-        shell: pwsh
+        shell: powershell
         run: |
           whoami
           $PSVersionTable
@@ -60,24 +60,24 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # универсальные команды для plugin/standalone compose
       - name: Pull new image
-        shell: pwsh
+        shell: powershell
         run: |
           docker compose -p tg_bot_pro pull 2>$null
           if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro pull }
 
       - name: Recreate containers
-        shell: pwsh
+        shell: powershell
         run: |
           docker compose -p tg_bot_pro up -d --remove-orphans 2>$null
           if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro up -d --remove-orphans }
 
       - name: Show status & last logs
-        shell: pwsh
+        shell: powershell
         run: |
           docker compose -p tg_bot_pro ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro ps }
           docker compose -p tg_bot_pro logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro logs --no-color --tail=80 }
 
       - name: Cleanup old images
+        shell: powershell
         run: docker image prune -f

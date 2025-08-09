@@ -1,13 +1,9 @@
+# compose.yml
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: miharooll/tg-bot-pro:latest   # ← именно образ из DockerHub
     container_name: tg-bot-pro
     restart: unless-stopped
-    # При необходимости выставь часовой пояс:
+    # env_file: .env
     # environment:
     #   - TZ=Europe/Moscow
-    # Если позже перенесёшь ключи в .env:
-    # env_file:
-    #   - .env
