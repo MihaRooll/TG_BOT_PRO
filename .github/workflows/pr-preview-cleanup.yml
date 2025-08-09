@@ -26,7 +26,9 @@ jobs:
         shell: powershell
         continue-on-error: true
         run: |
-          docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM down -v
+          if (Test-Path 'compose.preview.yml') {
+            docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM down -v
+          }
 
       - name: Fallback remove container (if any)
         shell: powershell

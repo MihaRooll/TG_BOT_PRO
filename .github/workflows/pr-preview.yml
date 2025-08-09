@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
   packages: write
-  pull-requests: write   # нужно, чтобы писать комментарии в PR
+  pull-requests: write   # нужно для комментариев в PR
 
 concurrency:
   group: pr-preview-${{ github.event.pull_request.number }}
@@ -77,32 +77,45 @@ jobs:
         run: |
           docker pull "$($env:IMAGE):pr-$($env:PR_NUM)-latest"
 
+      - name: Ensure compose.preview.yml exists (generate default if missing)
+        shell: powershell
+        run: |
+          if (!(Test-Path 'compose.preview.yml')) {
+            @"
+services:
+  bot:
+    image: `${IMAGE}:pr-`${PR_NUM}-latest
+    container_name: tg-bot-pro-pr-`${PR_NUM}
+    restart: unless-stopped
+"@ | Out-File -FilePath 'compose.preview.yml' -Encoding UTF8
+          }
+
       - name: Up preview stack
         shell: powershell
         run: |
           docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM up -d --remove-orphans --no-build
 
       # ===== ЛОГИ: сбор, маскировка, артефакт, комментарий в PR =====
-
       - name: Collect preview logs (always)
         shell: powershell
         if: always()
         continue-on-error: true
         run: |
           docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM logs --no-color > preview.log 2>&1
-          if (!(Test-Path preview.log)) { New-Item -ItemType File -Path preview.log | Out-Null }
+          if (!(Test-Path -Path 'preview.log')) { '' | Out-File -FilePath 'preview.log' -Encoding utf8 }
 
       - name: Sanitize logs (mask tokens)
         shell: powershell
         if: always()
         run: |
-          $c = Get-Content preview.log -Raw
-          # Телеграм токен
-          $c = [Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')
-          # Общие секреты
-          $c = [Regex]::Replace($c, '(?i)(BOT_TOKEN|API_KEY|TOKEN|SECRET)\s*[:=]\s*([^\s]+)', '$1=***')
-          Set-Content -Path preview.sanitized.log -Value $c -Encoding UTF8
-          Get-Content preview.sanitized.log -Tail 200 | Out-File pr-tail.log -Encoding UTF8
+          $c = Get-Content -Path 'preview.log' -Raw -ErrorAction SilentlyContinue
+          if ($null -eq $c) { $c = '' }
+          Add-Type -AssemblyName 'System.Text.RegularExpressions'
+          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')  # Telegram
+          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '(?i)(BOT_TOKEN|API_KEY|TOKEN|SECRET)\s*[:=]\s*([^\s]+)', '$1=***')
+          Set-Content -Path 'preview.sanitized.log' -Value $c -Encoding UTF8
+          (Get-Content 'preview.sanitized.log' -Tail 200) | Out-File 'pr-tail.log' -Encoding UTF8
+          if (!(Test-Path -Path 'pr-tail.log')) { '' | Out-File -FilePath 'pr-tail.log' -Encoding utf8 }
 
       - name: Upload full logs as artifact
         if: always()
@@ -119,19 +132,24 @@ jobs:
           script: |
             const fs = require('fs');
             const pr = context.payload.pull_request.number;
-            const tail = fs.readFileSync('pr-tail.log','utf8');
-            const code = "```\n" + tail + "\n```";
+            let body = 'No logs captured';
+            try {
+              if (fs.existsSync('pr-tail.log')) {
+                const tail = fs.readFileSync('pr-tail.log','utf8');
+                body = "```\n" + tail + "\n```";
+              }
+            } catch (e) {}
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: pr,
-              body: `🧪 Preview logs (last 200 lines):\n${code}`
+              body: `🧪 Preview logs (last 200 lines):\n${body}`
             });
 
       - name: Step Summary (tail)
         if: always()
         shell: powershell
         run: |
-          Add-Content $env:GITHUB_STEP_SUMMARY "### Preview logs (last 200 lines)"
-          Add-Content $env:GITHUB_STEP_SUMMARY "```"
-          Get-Content pr-tail.log | ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY $_ }
-          Add-Content $env:GITHUB_STEP_SUMMARY "```"
+          "### Preview logs (last 200 lines)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path 'pr-tail.log') { Get-Content 'pr-tail.log' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

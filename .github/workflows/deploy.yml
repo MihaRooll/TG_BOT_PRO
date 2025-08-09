@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # нужно, чтобы оставить комментарий к коммиту
+  contents: write   # нужно для комментария к коммиту
   packages: write
 
 concurrency:
@@ -82,24 +82,26 @@ jobs:
         run: docker compose -f compose.yml -p tg_bot_pro up -d --remove-orphans --no-build
 
       # ===== ЛОГИ: сбор, маскировка, артефакт, комментарий к коммиту =====
-
       - name: Collect deploy logs (always)
         shell: powershell
         if: always()
         continue-on-error: true
         run: |
           docker compose -f compose.yml -p tg_bot_pro logs --no-color > deploy.log 2>&1
-          if (!(Test-Path deploy.log)) { New-Item -ItemType File -Path deploy.log | Out-Null }
+          if (!(Test-Path -Path 'deploy.log')) { '' | Out-File -FilePath 'deploy.log' -Encoding utf8 }
 
       - name: Sanitize logs (mask tokens)
         shell: powershell
         if: always()
         run: |
-          $c = Get-Content deploy.log -Raw
-          $c = [Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')  # Telegram
-          $c = [Regex]::Replace($c, '(?i)(BOT_TOKEN|API_KEY|TOKEN|SECRET)\s*[:=]\s*([^\s]+)', '$1=***')
-          Set-Content -Path deploy.sanitized.log -Value $c -Encoding UTF8
-          Get-Content deploy.sanitized.log -Tail 200 | Out-File deploy.tail.log -Encoding UTF8
+          $c = Get-Content -Path 'deploy.log' -Raw -ErrorAction SilentlyContinue
+          if ($null -eq $c) { $c = '' }
+          Add-Type -AssemblyName 'System.Text.RegularExpressions'
+          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '\b\d{9}:[A-Za-z0-9_-]{35}\b', '***')  # Telegram
+          $c = [System.Text.RegularExpressions.Regex]::Replace($c, '(?i)(BOT_TOKEN|API_KEY|TOKEN|SECRET)\s*[:=]\s*([^\s]+)', '$1=***')
+          Set-Content -Path 'deploy.sanitized.log' -Value $c -Encoding UTF8
+          (Get-Content 'deploy.sanitized.log' -Tail 200) | Out-File 'deploy.tail.log' -Encoding UTF8
+          if (!(Test-Path -Path 'deploy.tail.log')) { '' | Out-File -FilePath 'deploy.tail.log' -Encoding utf8 }
 
       - name: Upload full logs as artifact
         if: always()
@@ -115,23 +117,28 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('deploy.tail.log','utf8');
-            const code = "```\n" + body + "\n```";
+            let body = 'No logs captured';
+            try {
+              if (fs.existsSync('deploy.tail.log')) {
+                const tail = fs.readFileSync('deploy.tail.log','utf8');
+                body = "```\n" + tail + "\n```";
+              }
+            } catch (e) {}
             await github.rest.repos.createCommitComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               commit_sha: context.sha,
-              body: "🚀 Deploy logs (last 200 lines):\n" + code
+              body: "🚀 Deploy logs (last 200 lines):\n" + body
             });
 
       - name: Step Summary (tail)
         if: always()
         shell: powershell
         run: |
-          Add-Content $env:GITHUB_STEP_SUMMARY "### Deploy logs (last 200 lines)"
-          Add-Content $env:GITHUB_STEP_SUMMARY "```"
-          Get-Content deploy.tail.log | ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY $_ }
-          Add-Content $env:GITHUB_STEP_SUMMARY "```"
+          "### Deploy logs (last 200 lines)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (Test-Path 'deploy.tail.log') { Get-Content 'deploy.tail.log' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+          '```' | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Cleanup
         shell: powershell
