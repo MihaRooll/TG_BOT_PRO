@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit, slugify, merch_tree
+import html
 
 DEFAULT_MERCH  = [("tshirt","Футболки"),("shopper","Шопперы"),("mug","Кружки")]
 DEFAULT_COLORS = [("white","Белый"),("black","Чёрный"),("red","Красный"),("blue","Синий"),("green","Зелёный"),("brown","Коричневый")]
@@ -10,7 +11,8 @@ ONESIZE        = ["OneSize"]
 
 def _header_with_tree(chat_id: int, title: str) -> str:
     d = WIZ[chat_id]["data"]
-    return "<pre>" + title + "\\n\\n<b>Структура</b>\\n" + (merch_tree(d) or "—") + "\\n</pre>"
+    tree = "Структура\n" + (merch_tree(d) or "—")
+    return f"{title}\n\n<pre><code>{html.escape(tree)}</code></pre>"
 
 def render_types(chat_id: int):
     d = WIZ[chat_id].setdefault("data", {})

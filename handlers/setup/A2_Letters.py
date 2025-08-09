@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit
+import html
 
 def render_letters_hub(chat_id: int):
     d = WIZ[chat_id]["data"]
@@ -14,21 +15,22 @@ def render_letters_hub(chat_id: int):
     alphabet_line = (("Латиница" if rules.get('allow_latin') else "") + (" / " if rules.get('allow_latin') and rules.get('allow_cyrillic') else "") + ("Кириллица" if rules.get('allow_cyrillic') else "")) or "—"
     space_line    = "Разрешен ✔️" if rules.get('allow_space') else "Запрещен ✖️"
 
-    text = (
-        "<pre>"
-        "<b>🔤 ШАГ 2/4: НАСТРОЙКА БУКВ И ЦИФР 🔢</b>\\n\\n"
-        "<b>✨ Буквы</b>\\n"
-        f"   ├─ <b>Статус:</b> {letters_status}\\n"
-        f"   ├─ <b>Алфавит:</b> {alphabet_line} ▸ \\n"
-        f"   ├─ <b>Пробел:</b> {space_line}\\n"
-        f"   └─ <b>Макс. длина:</b> ≤{rules.get('max_text_len','—')} симв\\n\\n"
-        "<b>✨ Цифры</b>\\n"
-        f"   ├─ <b>Статус:</b> {numbers_status}\\n"
-        f"   └─ <b>Макс. номер:</b> ≤{rules.get('max_number','—')}\\n\\n"
-        "<b>🎨 Палитра цветов текста</b>\\n"
-        f"   └─ {', '.join(pal) if pal else '—'}\\n"
-        "</pre>"
-    )
+    lines = [
+        "✨ Буквы",
+        f"   ├─ Статус: {letters_status}",
+        f"   ├─ Алфавит: {alphabet_line} ▸ ",
+        f"   ├─ Пробел: {space_line}",
+        f"   └─ Макс. длина: ≤{rules.get('max_text_len','—')} симв",
+        "",
+        "✨ Цифры",
+        f"   ├─ Статус: {numbers_status}",
+        f"   └─ Макс. номер: ≤{rules.get('max_number','—')}",
+        "",
+        "🎨 Палитра цветов текста",
+        f"   └─ {', '.join(pal) if pal else '—'}",
+    ]
+    body = html.escape("\n".join(lines))
+    text = "<b>🔤 ШАГ 2/4: НАСТРОЙКА БУКВ И ЦИФР 🔢</b>\n\n<pre><code>" + body + "</code></pre>"
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(types.InlineKeyboardButton(f"Буквы: {'вкл' if feats.get('letters') else 'выкл'}", callback_data="setup:feature_toggle:letters"),
             types.InlineKeyboardButton(f"Цифры: {'вкл' if feats.get('numbers') else 'выкл'}", callback_data="setup:feature_toggle:numbers"))
@@ -45,12 +47,13 @@ def render_letters_hub(chat_id: int):
 def render_limits_progress(chat_id: int):
     d = WIZ[chat_id]["data"].setdefault("text_rules", {"allow_latin": True, "allow_cyrillic": False, "allow_space": True, "max_text_len": 12, "max_number": 99})
     st = WIZ[chat_id]["data"].setdefault("_limits", {"len_ok": bool(d.get('max_text_len')), "num_ok": bool(d.get('max_number'))})
-    text = (
-        "<pre><b>Пределы ✏️</b>\\n"
-        f"1) Длина текста: {'☑' if st.get('len_ok') else '☐'}  (текущ.: {d.get('max_text_len', '—')})\\n"
-        f"2) Макс. номер:  {'☑' if st.get('num_ok') else '☐'}  (текущ.: {d.get('max_number', '—')})\\n"
-        "Выберите этап или укажите по порядку.\\n</pre>"
-    )
+    lines = [
+        "Пределы ✏️",
+        f"1) Длина текста: {'☑' if st.get('len_ok') else '☐'}  (текущ.: {d.get('max_text_len', '—')})",
+        f"2) Макс. номер:  {'☑' if st.get('num_ok') else '☐'}  (текущ.: {d.get('max_number', '—')})",
+        "Выберите этап или укажите по порядку.",
+    ]
+    text = "<pre><code>" + html.escape("\n".join(lines)) + "</code></pre>"
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(types.InlineKeyboardButton("1) Ввести длину текста", callback_data="setup:limits_edit:text_len"),
             types.InlineKeyboardButton("2) Ввести макс. номер", callback_data="setup:limits_edit:max_num"))
