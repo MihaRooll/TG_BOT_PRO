@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit, slugify, merch_tree
+import html
 
 DEFAULT_MERCH  = [("tshirt","Футболки"),("shopper","Шопперы"),("mug","Кружки")]
 DEFAULT_COLORS = [("white","Белый"),("black","Чёрный"),("red","Красный"),("blue","Синий"),("green","Зелёный"),("brown","Коричневый")]
@@ -10,7 +11,11 @@ ONESIZE        = ["OneSize"]
 
 def _header_with_tree(chat_id: int, title: str) -> str:
     d = WIZ[chat_id]["data"]
-    return "<pre>" + title + "\\n\\n<b>Структура</b>\\n" + (merch_tree(d) or "—") + "\\n</pre>"
+    tree_lines = ["Структура"]
+    tree = merch_tree(d)
+    tree_lines.extend(tree.split("\n") if tree else ["—"])
+    body = "\n".join(tree_lines)
+    return f"{title}\n\n<pre><code>{html.escape(body)}</code></pre>"
 
 def render_types(chat_id: int):
     d = WIZ[chat_id].setdefault("data", {})
@@ -99,7 +104,7 @@ def render_sizes(chat_id: int, mk: str):
     if sizes:
         kb.add(types.InlineKeyboardButton("Сохранить и следующий", callback_data="setup:next_merch_or_done"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к цветам", callback_data=f"setup:colors:{mk}"))
-    edit(chat_id, _header_with_tree(chat_id, f"Шаг 1.2/4. <b>{item['name_ru']}</b> — размеры.\\nТекущие: {sizes_text}"), kb)
+    edit(chat_id, _header_with_tree(chat_id, f"Шаг 1.2/4. <b>{item['name_ru']}</b> — размеры.\nТекущие: {sizes_text}"), kb)
     WIZ[chat_id]["stage"] = f"sizes:{mk}"
 
 def set_default_sizes(chat_id: int, mk: str):

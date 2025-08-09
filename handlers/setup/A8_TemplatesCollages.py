@@ -11,10 +11,23 @@ def ask_collages_or_next(chat_id: int):
         open_inventory_sizes(chat_id); return
     mk = has[0]
     WIZ[chat_id]["data"]["_mk_collages"] = mk
+    render_progress(chat_id)
+
+
+def render_progress(chat_id: int):
+    mk = WIZ[chat_id]["data"].get("_mk_collages")
+    if not mk:
+        return
+    d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
+    count = len(d.get("collages", []))
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Готово ☑", callback_data="setup:tmpl_collages_done"))
     kb.add(types.InlineKeyboardButton("Пропустить", callback_data="setup:tmpl_collages_done"))
-    edit(chat_id, "Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).", kb)
+    edit(
+        chat_id,
+        f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nЗагружено: {count}",
+        kb,
+    )
     WIZ[chat_id]["stage"] = f"tmpl_collages:{mk}"
 
 def collages_done(chat_id: int):
