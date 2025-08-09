@@ -1,0 +1,42 @@
+name: PR Preview Cleanup
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  delete-preview:
+    runs-on: [self-hosted, Windows, X64, tg-bot]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set env
+        shell: powershell
+        run: |
+          $u='${{ secrets.DOCKERHUB_USERNAME }}'.ToLower()
+          "IMAGE=$u/tg-bot-pro" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PR_NUM=${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Down preview stack
+        shell: powershell
+        continue-on-error: true
+        run: |
+          docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM down -v
+
+      - name: Fallback remove container (if any)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          docker rm -f tg-bot-pro-pr-$env:PR_NUM
+
+      - name: Remove PR images (optional)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          docker image rm "$($env:IMAGE):pr-$($env:PR_NUM)-latest"
+          docker image prune -f

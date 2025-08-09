@@ -1,8 +1,10 @@
 services:
   bot:
-    image: ${IMAGE}:latest          # IMAGE пробрасывается из workflow
-    container_name: tg-bot-pro
+    image: ${IMAGE}:pr-${PR_NUM}-latest
+    container_name: tg-bot-pro-pr-${PR_NUM}
     restart: unless-stopped
-    # env_file: .env
+    # Если нужна изоляция токенов на превью — раскомментируй и добавь секрет:
     # environment:
-    #   - TZ=Europe/Moscow
+    #   - BOT_TOKEN=${PREVIEW_BOT_TOKEN}
+    # env_file:
+    #   - .env.preview

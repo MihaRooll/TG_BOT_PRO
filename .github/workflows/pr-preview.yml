@@ -1,0 +1,104 @@
+name: PR Preview
+
+on:
+  pull_request:
+    # target ветка — main
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set env (lowercase user, IMAGE, PR_NUM)
+        run: |
+          echo "PR_NUM=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          echo "DH_USER=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "IMAGE=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')/tg-bot-pro" >> $GITHUB_ENV
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push PR image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:pr-${{ env.PR_NUM }}-latest
+            ${{ env.IMAGE }}:pr-${{ env.PR_NUM }}-${{ github.sha }}
+
+  deploy-preview:
+    needs: build-and-push-pr
+    runs-on: [self-hosted, Windows, X64, tg-bot]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set env for Windows job
+        shell: powershell
+        run: |
+          $u='${{ secrets.DOCKERHUB_USERNAME }}'.ToLower()
+          "IMAGE=$u/tg-bot-pro" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PR_NUM=${{ github.event.pull_request.number }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "IMAGE=$u/tg-bot-pro; PR_NUM=$env:PR_NUM"
+
+      - name: Runner & Docker info
+        shell: powershell
+        run: |
+          whoami
+          $PSVersionTable
+          docker version
+          (docker compose version) -or (docker-compose --version)
+
+      - name: Login DockerHub on remote
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull PR image
+        shell: powershell
+        run: |
+          docker pull "$($env:IMAGE):pr-$($env:PR_NUM)-latest"
+
+      - name: Compose config (preview)
+        shell: powershell
+        run: |
+          docker compose -f compose.preview.yml config
+
+      # Если превью-бот должен работать ОДИН, можно временно стопнуть прод:
+      # - name: Stop production (optional)
+      #   shell: powershell
+      #   run: |
+      #     docker rm -f tg-bot-pro 2>$null
+
+      - name: Up preview stack
+        shell: powershell
+        run: |
+          docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM up -d --remove-orphans --no-build
+
+      - name: Status & logs (preview)
+        shell: powershell
+        run: |
+          docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM ps
+          docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM logs --no-color --tail=80
+
+      - name: Cleanup dangling
+        shell: powershell
+        run: docker image prune -f
