@@ -47,12 +47,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 👇 та же переменная IMAGE на Windows
+      # ВАЖНО: задать IMAGE в этом job (lowercase username)
       - name: Set IMAGE env (lowercase)
         shell: powershell
         run: |
           $u='${{ secrets.DOCKERHUB_USERNAME }}'.ToLower()
           "IMAGE=$u/tg-bot-pro" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "IMAGE=$u/tg-bot-pro"
 
       - name: Runner & Docker info
         shell: powershell
@@ -70,7 +71,9 @@ jobs:
 
       - name: Pull image
         shell: powershell
-        run: docker pull "$env:IMAGE:latest"
+        run: |
+          Write-Host "Pulling $($env:IMAGE):latest"
+          docker pull "$($env:IMAGE):latest"
 
       - name: Up stack
         shell: powershell
@@ -82,7 +85,3 @@ jobs:
         run: |
           docker compose -p tg_bot_pro ps 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro ps }
           docker compose -p tg_bot_pro logs --no-color --tail=80 2>$null; if ($LASTEXITCODE -ne 0) { docker-compose -p tg_bot_pro logs --no-color --tail=80 }
-
-      - name: Cleanup
-        shell: powershell
-        run: docker image prune -f
