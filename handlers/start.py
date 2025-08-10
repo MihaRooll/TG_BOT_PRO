@@ -2,9 +2,11 @@
 from telebot import types
 from bot import bot
 from services.settings import get_settings
+from utils.tg import set_chat_commands
 
 @bot.message_handler(commands=["start","help"])
 def start_cmd(message: types.Message):
+    set_chat_commands(bot, message.chat.id)
     s = get_settings()
     kb = types.InlineKeyboardMarkup(row_width=1)
     if not s.get("configured"):

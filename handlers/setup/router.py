@@ -83,6 +83,7 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Step 4: Inventory ---
     if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
+    if cmd == "inv_sizes_home":         INV.open_inventory_sizes(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
     if cmd == "inv_sz_qty":             INV.open_qty_spinner(chat_id, rest[0], rest[1], rest[2]); return
