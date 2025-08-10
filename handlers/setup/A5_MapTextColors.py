@@ -31,6 +31,10 @@ def render_pair(chat_id: int, mk: str, ck: str) -> None:
     )
     WIZ[chat_id]["stage"] = "map_text_colors"
 
+    # mark this pair as reviewed under current palette size
+    seen = d.setdefault("_maptc_seen", {}).setdefault(mk, {})
+    seen[ck] = len(pal)
+
 
 def render_next_pair(chat_id: int) -> None:
     d = WIZ[chat_id]["data"]
@@ -49,9 +53,13 @@ def render_next_pair(chat_id: int) -> None:
         WIZ[chat_id]["stage"] = "map_text_colors"
         return
 
+    seen = d.setdefault("_maptc_seen", {})
     for mk, mi in merch.items():
         for ck in mi.get("colors", {}):
             cur = d.setdefault("text_colors", {}).setdefault(mk, {}).setdefault(ck, [])
+            if seen.get(mk, {}).get(ck) != len(pal):
+                render_pair(chat_id, mk, ck)
+                return
             if not cur and pal:
                 render_pair(chat_id, mk, ck)
                 return
