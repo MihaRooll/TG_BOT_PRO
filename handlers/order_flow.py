@@ -5,23 +5,21 @@ from telebot.apihelper import ApiTelegramException
 from bot import bot
 import config
 from services.settings import get_settings, get_admin_bind
+from services.roles import is_admin, is_employee
 from services.inventory import (
     get_merch_inv, get_letters_inv, get_numbers_inv, get_templates_inv,
     dec_size, dec_letter, dec_number, dec_template
 )
-from repositories.files import load_json, save_json
 from services.validators import validate_text, validate_number
 from utils.tg import safe_delete, safe_edit_message
 
 # Временные заказы (по chat_id)
 ORD: dict[int, dict] = {}
 
-ADMIN_BIND_FILE = "admin_chat.json"
-
 def _admin_target():
-    b = load_json(ADMIN_BIND_FILE)
-    if b:
-        return b.get("chat_id"), b.get("thread_id")
+    chat_id, thread_id = get_admin_bind()
+    if chat_id:
+        return chat_id, thread_id
     return getattr(config, "ADMIN_CHAT_ID", None), None
 
 def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
@@ -40,8 +38,27 @@ def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
         else:
             raise
 
+
+@bot.message_handler(commands=["order"])
+def order_cmd(m: types.Message):
+    if not (is_admin(m.from_user.id) or is_employee(m.from_user.id)):
+        bot.reply_to(m, "Нет доступа.")
+        return
+    s = get_settings()
+    if not s.get("configured"):
+        bot.reply_to(m, "Бот не настроен. Нажмите /start и пройдите мастер.")
+        return
+    merch = s.get("merch", {})
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for mk, info in merch.items():
+        kb.add(types.InlineKeyboardButton(info.get("name_ru", mk), callback_data=f"order:m:{mk}"))
+    bot.send_message(m.chat.id, "Выберите вид мерча:", reply_markup=kb)
+
 @bot.callback_query_handler(func=lambda c: c.data == "order:start")
 def order_start(c: types.CallbackQuery):
+    if not (is_admin(c.from_user.id) or is_employee(c.from_user.id)):
+        bot.answer_callback_query(c.id, "Нет доступа", show_alert=True)
+        return
     s = get_settings()
     if not s.get("configured"):
         bot.answer_callback_query(c.id)
