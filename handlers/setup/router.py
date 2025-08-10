@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from bot import bot
-from .core import WIZ, ensure, edit
+from .core import WIZ, ensure, edit, anchor
+from services.roles import is_admin
 
 from . import A0_Overview as O
 from . import A1_Merch    as M
@@ -16,8 +17,14 @@ from . import A9_InventorySizes   as INV
 
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
+    if not is_admin(c.from_user.id):
+        bot.answer_callback_query(c.id, "Нет доступа", show_alert=True)
+        return
     chat_id = c.message.chat.id
     ensure(chat_id, c.message.message_id)
+    if anchor(chat_id) != c.message.message_id:
+        bot.answer_callback_query(c.id)
+        return
     parts = c.data.split(":")
     cmd, *rest = parts[1:]
 
@@ -26,7 +33,7 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "bind_hint":
         kb = types.InlineKeyboardMarkup()
         kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-        edit(chat_id, "📌 Привязка общего чата:\\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\\n2) Выполните там команду /bind_here.\\nБот запомнит чат (и тему, если есть).", kb)
+        edit(chat_id, "<pre>📌 Привязка общего чата:\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\n2) Выполните там команду /bind_here.\nБот запомнит чат (и тему, если есть).</pre>", kb)
         return
 
     # --- Step 1: Merch ---
@@ -73,16 +80,12 @@ def setup_router(c: types.CallbackQuery):
         edit(chat_id, "Шаг 3/4. Выберите вид мерча для ввода номеров макетов.", kb)
         WIZ[chat_id]["stage"] = "tmpls_pick"; return
     if cmd == "tmpl_nums_for":         TNUM.start_for_merch(chat_id, rest[0]); return
-    if cmd == "tmpl_num_key":          TNUM.keypress(chat_id, rest[0]); return
-    if cmd == "tmpl_num_back":         TNUM.backspace(chat_id); return
-    if cmd == "tmpl_num_clear":        TNUM.clearbuf(chat_id); return
-    if cmd == "tmpl_num_add":          TNUM.add_number(chat_id); return
     if cmd == "tmpl_num_done":         TNUM.done(chat_id); return
     if cmd == "tmpl_color_toggle":     TCOL.toggle_color(chat_id, rest[0], rest[1], rest[2]); return
     if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
     if cmd == "tmpl_collages_done":    TCOLL.collages_done(chat_id); return
 
-    # --- Step 4: Inventory (sizes) ---
+    # --- Step 4: Inventory ---
     if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
@@ -92,6 +95,30 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "inv_sz_save":            INV.save_qty(chat_id, rest[0], rest[1], rest[2]); return
     if cmd == "inv_sz_apply_all":       INV.apply_all_sizes(chat_id, rest[0], rest[1]); return
     if cmd == "inv_sz_all_set":         INV.set_all_sizes(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_letters":            INV.open_inventory_letters(chat_id); return
+    if cmd == "inv_letters_chars":      INV.open_letters_chars(chat_id, rest[0]); return
+    if cmd == "inv_lt_qty":             INV.open_letter_qty_spinner(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_lt_adj":             INV.adjust_letter_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_lt_set":             INV.set_letter_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_lt_save":            INV.save_letter_qty(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_lt_apply_all":       INV.apply_all_letters(chat_id, rest[0]); return
+    if cmd == "inv_lt_all_set":         INV.set_all_letters(chat_id, rest[0], int(rest[1])); return
+
+    if cmd == "inv_numbers":            INV.open_inventory_numbers(chat_id); return
+    if cmd == "inv_numbers_digits":     INV.open_numbers_digits(chat_id, rest[0]); return
+    if cmd == "inv_nm_qty":             INV.open_number_qty_spinner(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_nm_adj":             INV.adjust_number_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_nm_set":             INV.set_number_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_nm_save":            INV.save_number_qty(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_nm_apply_all":       INV.apply_all_numbers(chat_id, rest[0]); return
+    if cmd == "inv_nm_all_set":         INV.set_all_numbers(chat_id, rest[0], int(rest[1])); return
+
+    if cmd == "inv_templates":          INV.open_inventory_templates(chat_id); return
+    if cmd == "inv_tmpls_nums":         INV.open_template_nums(chat_id, rest[0]); return
+    if cmd == "inv_tmpl_qty":           INV.open_template_qty_spinner(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_tmpl_adj":           INV.adjust_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_tmpl_set":           INV.set_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_tmpl_save":          INV.save_template_qty(chat_id, rest[0], rest[1]); return
 
     # --- Finish ---
     if cmd == "finish":                 _finish(chat_id); return
@@ -127,6 +154,8 @@ def _safe_del(mid_chat: int, mid: int):
 
 @bot.message_handler(func=lambda m: m.chat.id in WIZ and True, content_types=["text","photo"])
 def _during_setup(m: types.Message):
+    if not is_admin(m.from_user.id):
+        return
     chat_id = m.chat.id
     st = WIZ[chat_id].get("stage","")
     text = (m.text or "").strip() if m.content_type == "text" else ""
@@ -139,6 +168,8 @@ def _during_setup(m: types.Message):
         from .A1_Merch import handle_custom_sizes; mk = st.split(":")[1]; handle_custom_sizes(chat_id, mk, text)
     elif st == "pal_add" and text:
         from .A4_TextPalette import handle_custom_color; handle_custom_color(chat_id, text)
+    elif st == "tmpl_nums_enter" and text:
+        from .A6_TemplatesNumbers import handle_input; handle_input(chat_id, text)
     # --- коллажи (фото) ---
     elif st.startswith("tmpl_collages:") and m.content_type == "photo":
         mk = st.split(":")[1]
