@@ -86,3 +86,11 @@ def set_all_sizes(chat_id: int, mk: str, ck: str, val: int):
         if inv.get(sz, 0) == 0:
             inv[sz] = val
     open_sizes(chat_id, mk, ck)
+
+
+def open_letters_stub(chat_id: int):
+    WIZ[chat_id]["stage"] = "inv_letters_stub"
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv"))
+    kb.add(types.InlineKeyboardButton("✅ Пропустить", callback_data="setup:finish"))
+    edit(chat_id, "Остатки букв пока не реализованы. Нажмите 'Пропустить' чтобы завершить.", kb)
