@@ -1,8 +1,7 @@
-\
 # -*- coding: utf-8 -*-
 from telebot import types
 from bot import bot
-from .core import WIZ, ensure, edit
+from .core import WIZ, ensure, edit, home_text
 
 from . import A0_Overview as O
 from . import A1_Merch    as M
@@ -14,87 +13,103 @@ from . import A7_TemplatesColors  as TCOL
 from . import A8_TemplatesCollages as TCOLL
 from . import A9_InventorySizes   as INV
 
+
+# ---------------------------------------------------------------------------
+# Callback routing
+# ---------------------------------------------------------------------------
+
+def _bind_hint(chat_id: int):
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
+    edit(
+        chat_id,
+        "📌 Привязка общего чата:\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\n2) Выполните там команду /bind_here.\nБот запомнит чат (и тему, если есть).",
+        kb,
+    )
+
+
+def _open_tmpls(chat_id: int):
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    d = WIZ[chat_id]["data"]
+    for mk, mi in d.get("merch", {}).items():
+        kb.add(types.InlineKeyboardButton(mi['name_ru'], callback_data=f"setup:tmpl_nums_for:{mk}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
+    edit(chat_id, "Шаг 3/4. Выберите вид мерча для ввода номеров макетов.", kb)
+    WIZ[chat_id]["stage"] = "tmpls_pick"
+
+
+CALLBACKS = {
+    # home / overview
+    "init":              lambda cid, r: O.render_home(cid),
+    "home":              lambda cid, r: O.render_home(cid),
+    "bind_hint":        lambda cid, r: _bind_hint(cid),
+
+    # step 1: merch
+    "merch":            lambda cid, r: M.render_types(cid),
+    "merch_toggle":     lambda cid, r: M.toggle_type(cid, r[0]),
+    "merch_add":        lambda cid, r: M.ask_custom(cid),
+    "colors_sizes":     lambda cid, r: M.start_colors_iter(cid),
+    "colors":           lambda cid, r: M.render_colors(cid, r[0]),
+    "color_toggle":     lambda cid, r: M.toggle_color(cid, r[0], r[1]),
+    "color_add":        lambda cid, r: M.ask_custom_color(cid, r[0]),
+    "sizes":            lambda cid, r: M.render_sizes(cid, r[0]),
+    "sizes_default":    lambda cid, r: M.set_default_sizes(cid, r[0]),
+    "sizes_one":        lambda cid, r: M.set_one_size(cid, r[0]),
+    "sizes_add":        lambda cid, r: M.ask_custom_sizes(cid, r[0]),
+    "next_merch_or_done": lambda cid, r: M.next_merch_or_done(cid),
+
+    # step 2: letters & limits
+    "letters":          lambda cid, r: L.render_letters_hub(cid),
+    "numbers":          lambda cid, r: L.render_letters_hub(cid),
+    "feature_toggle":   lambda cid, r: L.toggle_feature(cid, r[0]),
+    "rule_toggle":      lambda cid, r: L.toggle_rule(cid, r[0]),
+    "limits":           lambda cid, r: L.render_limits_progress(cid),
+    "limits_edit":      lambda cid, r: L.ask_limit_len(cid) if r[0] == "text_len" else L.ask_limit_num(cid),
+    "limits_done":      lambda cid, r: L.render_letters_hub(cid),
+    "palette":          lambda cid, r: P.render_palette(cid),
+    "pal_toggle":       lambda cid, r: P.toggle_palette_color(cid, r[0]),
+    "pal_add":          lambda cid, r: P.ask_custom_color(cid),
+
+    # step 2.1: map text colors
+    "map_text_colors":  lambda cid, r: MAP.render_next_pair(cid),
+    "maptc_toggle":     lambda cid, r: MAP.toggle_map(cid, r[0], r[1], r[2]),
+    "maptc_next":       lambda cid, r: MAP.next_pair(cid),
+
+    # step 3: templates
+    "tmpls":            lambda cid, r: _open_tmpls(cid),
+    "tmpl_nums_for":    lambda cid, r: TNUM.start_for_merch(cid, r[0]),
+    "tmpl_num_done":    lambda cid, r: TNUM.done(cid),
+    "tmpl_color_toggle": lambda cid, r: TCOL.toggle_color(cid, r[0], r[1], r[2]),
+    "tmpl_color_next":  lambda cid, r: TCOL.next_template(cid, r[0], r[1]),
+    "tmpl_collages_done": lambda cid, r: TCOLL.collages_done(cid),
+
+    # step 4: inventory
+    "inv":              lambda cid, r: INV.open_inventory_sizes(cid),
+    "inv_sizes_colors": lambda cid, r: INV.open_colors(cid, r[0]),
+    "inv_sizes_sizes":  lambda cid, r: INV.open_sizes(cid, r[0], r[1]),
+    "inv_sz_qty":       lambda cid, r: INV.open_qty_spinner(cid, r[0], r[1], r[2]),
+    "inv_sz_adj":       lambda cid, r: INV.adjust_qty(cid, r[0], r[1], r[2], int(r[3])),
+    "inv_sz_set":       lambda cid, r: INV.set_qty(cid, r[0], r[1], r[2], int(r[3])),
+    "inv_sz_save":      lambda cid, r: INV.save_qty(cid, r[0], r[1], r[2]),
+    "inv_sz_apply_all": lambda cid, r: INV.apply_all_sizes(cid, r[0], r[1]),
+    "inv_sz_all_set":   lambda cid, r: INV.set_all_sizes(cid, r[0], r[1], int(r[2])),
+
+    # finish
+    "finish":           lambda cid, r: _finish(cid),
+}
+
+
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
     chat_id = c.message.chat.id
+    bot.answer_callback_query(c.id)
     ensure(chat_id, c.message.message_id)
     parts = c.data.split(":")
-    cmd, *rest = parts[1:]
+    cmd, rest = parts[1], parts[2:]
+    handler = CALLBACKS.get(cmd)
+    if handler:
+        handler(chat_id, rest)
 
-    if cmd == "init":         O.render_home(chat_id); return
-    if cmd == "home":         O.render_home(chat_id); return
-    if cmd == "bind_hint":
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-        edit(chat_id, "📌 Привязка общего чата:\\n1) Добавьте бота в нужную группу/канал (в канале — как администратора).\\n2) Выполните там команду /bind_here.\\nБот запомнит чат (и тему, если есть).", kb)
-        return
-
-    # --- Step 1: Merch ---
-    if cmd == "merch":            M.render_types(chat_id); return
-    if cmd == "merch_toggle":     M.toggle_type(chat_id, rest[0]); return
-    if cmd == "merch_add":        M.ask_custom(chat_id); return
-    if cmd == "colors_sizes":     M.start_colors_iter(chat_id); return
-    if cmd == "colors":           M.render_colors(chat_id, rest[0]); return
-    if cmd == "color_toggle":     M.toggle_color(chat_id, rest[0], rest[1]); return
-    if cmd == "color_add":        M.ask_custom_color(chat_id, rest[0]); return
-    if cmd == "sizes":            M.render_sizes(chat_id, rest[0]); return
-    if cmd == "sizes_default":    M.set_default_sizes(chat_id, rest[0]); return
-    if cmd == "sizes_one":        M.set_one_size(chat_id, rest[0]); return
-    if cmd == "sizes_add":        M.ask_custom_sizes(chat_id, rest[0]); return
-    if cmd == "next_merch_or_done": M.next_merch_or_done(chat_id); return
-
-    # --- Step 2: Letters & limits ---
-    if cmd in ("letters", "numbers"):  L.render_letters_hub(chat_id); return
-    if cmd == "feature_toggle":        L.toggle_feature(chat_id, rest[0]); return
-    if cmd == "rule_toggle":           L.toggle_rule(chat_id, rest[0]); return
-    if cmd == "limits":                L.render_limits_progress(chat_id); return
-    if cmd == "limits_edit":
-        which = rest[0]
-        if which == "text_len": L.ask_limit_len(chat_id)
-        else:                    L.ask_limit_num(chat_id)
-        return
-    if cmd == "limits_done":           L.render_letters_hub(chat_id); return
-    if cmd == "palette":               P.render_palette(chat_id); return
-    if cmd == "pal_toggle":            P.toggle_palette_color(chat_id, rest[0]); return
-    if cmd == "pal_add":               P.ask_custom_color(chat_id); return
-
-    # --- Step 2.1: Map text colors per merch/color ---
-    if cmd == "map_text_colors":       MAP.render_next_pair(chat_id); return
-    if cmd == "maptc_toggle":          MAP.toggle_map(chat_id, rest[0], rest[1], rest[2]); return
-    if cmd == "maptc_next":            MAP.next_pair(chat_id); return
-
-    # --- Step 3: Templates ---
-    if cmd == "tmpls":
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        d = WIZ[chat_id]["data"]
-        for mk, mi in d.get("merch", {}).items():
-            kb.add(types.InlineKeyboardButton(mi['name_ru'], callback_data=f"setup:tmpl_nums_for:{mk}"))
-        kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-        edit(chat_id, "Шаг 3/4. Выберите вид мерча для ввода номеров макетов.", kb)
-        WIZ[chat_id]["stage"] = "tmpls_pick"; return
-    if cmd == "tmpl_nums_for":         TNUM.start_for_merch(chat_id, rest[0]); return
-    if cmd == "tmpl_num_key":          TNUM.keypress(chat_id, rest[0]); return
-    if cmd == "tmpl_num_back":         TNUM.backspace(chat_id); return
-    if cmd == "tmpl_num_clear":        TNUM.clearbuf(chat_id); return
-    if cmd == "tmpl_num_add":          TNUM.add_number(chat_id); return
-    if cmd == "tmpl_num_done":         TNUM.done(chat_id); return
-    if cmd == "tmpl_color_toggle":     TCOL.toggle_color(chat_id, rest[0], rest[1], rest[2]); return
-    if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
-    if cmd == "tmpl_collages_done":    TCOLL.collages_done(chat_id); return
-
-    # --- Step 4: Inventory (sizes) ---
-    if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
-    if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
-    if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
-    if cmd == "inv_sz_qty":             INV.open_qty_spinner(chat_id, rest[0], rest[1], rest[2]); return
-    if cmd == "inv_sz_adj":             INV.adjust_qty(chat_id, rest[0], rest[1], rest[2], int(rest[3])); return
-    if cmd == "inv_sz_set":             INV.set_qty(chat_id, rest[0], rest[1], rest[2], int(rest[3])); return
-    if cmd == "inv_sz_save":            INV.save_qty(chat_id, rest[0], rest[1], rest[2]); return
-    if cmd == "inv_sz_apply_all":       INV.apply_all_sizes(chat_id, rest[0], rest[1]); return
-    if cmd == "inv_sz_all_set":         INV.set_all_sizes(chat_id, rest[0], rest[1], int(rest[2])); return
-
-    # --- Finish ---
-    if cmd == "finish":                 _finish(chat_id); return
 
 def _finish(chat_id: int):
     tmp = WIZ[chat_id]["data"]
@@ -115,8 +130,10 @@ def _finish(chat_id: int):
     save_numbers_inv(tmp.get("_inv_numbers", {}))
     save_templates_inv(tmp.get("_inv_tmpls", {}))
 
-    edit(chat_id, "Готово! ☑ Бот настроен и готов к приёму заказов. Нажмите /start.", None)
+    summary = home_text(tmp)
+    edit(chat_id, summary + "\n\n<b>Готово! ☑ Бот настроен и готов к приёму заказов. Нажмите /start.</b>", None)
     WIZ.pop(chat_id, None)
+
 
 # ----------- удаляем пользовательские сообщения и обрабатываем ввод ----------
 def _safe_del(mid_chat: int, mid: int):
@@ -125,39 +142,65 @@ def _safe_del(mid_chat: int, mid: int):
     except Exception:
         pass
 
-@bot.message_handler(func=lambda m: m.chat.id in WIZ and True, content_types=["text","photo"])
+
+def _handle_limit_len(chat_id: int, text: str):
+    try:
+        val = int(text); assert val > 0
+        L.set_limit_len(chat_id, val)
+    except Exception:
+        L.ask_limit_len(chat_id)
+
+
+def _handle_limit_num(chat_id: int, text: str):
+    try:
+        val = int(text); assert val >= 0
+        L.set_limit_num(chat_id, val)
+    except Exception:
+        L.ask_limit_num(chat_id)
+
+
+def _handle_inv_qty(chat_id: int, st: str, text: str):
+    mk, ck, sz = st.split(":")[1:]
+    try:
+        val = int(text)
+        INV.set_qty(chat_id, mk, ck, sz, val)
+    except Exception:
+        INV.open_qty_spinner(chat_id, mk, ck, sz)
+
+
+def _handle_collage(chat_id: int, st: str, m: types.Message):
+    mk = st.split(":")[1]
+    d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
+    f_id = m.photo[-1].file_id
+    col = d.setdefault("collages", [])
+    if len(col) < 10:
+        col.append(f_id)
+    TCOLL.render_progress(chat_id)
+
+
+TEXT_STAGES = {
+    "merch_add":      lambda cid, st, text: M.handle_custom_input(cid, text),
+    "color_add":      lambda cid, st, text: M.handle_custom_color(cid, st.split(":")[1], text),
+    "sizes_add":      lambda cid, st, text: M.handle_custom_sizes(cid, st.split(":")[1], text),
+    "pal_add":        lambda cid, st, text: P.handle_custom_color(cid, text),
+    "tmpl_nums_input": lambda cid, st, text: TNUM.handle_text(cid, st.split(":")[1], text),
+    "limits_len":     lambda cid, st, text: _handle_limit_len(cid, text),
+    "limits_num":     lambda cid, st, text: _handle_limit_num(cid, text),
+    "inv_sz_qty":     lambda cid, st, text: _handle_inv_qty(cid, st, text),
+}
+
+
+@bot.message_handler(func=lambda m: m.chat.id in WIZ, content_types=["text","photo"])
 def _during_setup(m: types.Message):
     chat_id = m.chat.id
-    st = WIZ[chat_id].get("stage","")
-    text = (m.text or "").strip() if m.content_type == "text" else ""
-    # --- кастомные добавления (мерч/цвет/размеры/палитра) ---
-    if st == "merch_add" and text:
-        from .A1_Merch import handle_custom_input; handle_custom_input(chat_id, text)
-    elif st.startswith("color_add:") and text:
-        from .A1_Merch import handle_custom_color; mk = st.split(":")[1]; handle_custom_color(chat_id, mk, text)
-    elif st.startswith("sizes_add:") and text:
-        from .A1_Merch import handle_custom_sizes; mk = st.split(":")[1]; handle_custom_sizes(chat_id, mk, text)
-    elif st == "pal_add" and text:
-        from .A4_TextPalette import handle_custom_color; handle_custom_color(chat_id, text)
-    # --- коллажи (фото) ---
-    elif st.startswith("tmpl_collages:") and m.content_type == "photo":
-        mk = st.split(":")[1]
-        d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
-        f_id = m.photo[-1].file_id
-        col = d.setdefault("collages", [])
-        if len(col) < 10: col.append(f_id)
-    # --- лимиты по шагам ---
-    elif st == "limits_len" and text:
-        try:
-            val = int(text); assert val > 0
-            from .A2_Letters import set_limit_len; set_limit_len(chat_id, val)
-        except Exception:
-            from .A2_Letters import ask_limit_len; ask_limit_len(chat_id)
-    elif st == "limits_num" and text:
-        try:
-            val = int(text); assert val >= 0
-            from .A2_Letters import set_limit_num; set_limit_num(chat_id, val)
-        except Exception:
-            from .A2_Letters import ask_limit_num; ask_limit_num(chat_id)
-    # --- удаляем любое пользовательское сообщение ---
+    st = WIZ[chat_id].get("stage", "")
+    if m.content_type == "photo" and st.startswith("tmpl_collages:"):
+        _handle_collage(chat_id, st, m)
+    elif m.content_type == "text":
+        text = (m.text or "").strip()
+        for key, fn in TEXT_STAGES.items():
+            if st == key or st.startswith(key + ":"):
+                fn(chat_id, st, text)
+                break
     _safe_del(chat_id, m.message_id)
+
