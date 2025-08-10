@@ -16,17 +16,17 @@ def render_letters_hub(chat_id: int):
 
     text = (
         "<pre>"
-        "<b>🔤 ШАГ 2/4: НАСТРОЙКА БУКВ И ЦИФР 🔢</b>\\n\\n"
-        "<b>✨ Буквы</b>\\n"
-        f"   ├─ <b>Статус:</b> {letters_status}\\n"
-        f"   ├─ <b>Алфавит:</b> {alphabet_line} ▸ \\n"
-        f"   ├─ <b>Пробел:</b> {space_line}\\n"
-        f"   └─ <b>Макс. длина:</b> ≤{rules.get('max_text_len','—')} симв\\n\\n"
-        "<b>✨ Цифры</b>\\n"
-        f"   ├─ <b>Статус:</b> {numbers_status}\\n"
-        f"   └─ <b>Макс. номер:</b> ≤{rules.get('max_number','—')}\\n\\n"
-        "<b>🎨 Палитра цветов текста</b>\\n"
-        f"   └─ {', '.join(pal) if pal else '—'}\\n"
+        "<b>🔤 ШАГ 2/4: НАСТРОЙКА БУКВ И ЦИФР 🔢</b>\n\n"
+        "<b>✨ Буквы</b>\n"
+        f"   ├─ <b>Статус:</b> {letters_status}\n"
+        f"   ├─ <b>Алфавит:</b> {alphabet_line} ▸ \n"
+        f"   ├─ <b>Пробел:</b> {space_line}\n"
+        f"   └─ <b>Макс. длина:</b> ≤{rules.get('max_text_len','—')} симв\n\n"
+        "<b>✨ Цифры</b>\n"
+        f"   ├─ <b>Статус:</b> {numbers_status}\n"
+        f"   └─ <b>Макс. номер:</b> ≤{rules.get('max_number','—')}\n\n"
+        "<b>🎨 Палитра цветов текста</b>\n"
+        f"   └─ {', '.join(pal) if pal else '—'}\n"
         "</pre>"
     )
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -46,10 +46,10 @@ def render_limits_progress(chat_id: int):
     d = WIZ[chat_id]["data"].setdefault("text_rules", {"allow_latin": True, "allow_cyrillic": False, "allow_space": True, "max_text_len": 12, "max_number": 99})
     st = WIZ[chat_id]["data"].setdefault("_limits", {"len_ok": bool(d.get('max_text_len')), "num_ok": bool(d.get('max_number'))})
     text = (
-        "<pre><b>Пределы ✏️</b>\\n"
-        f"1) Длина текста: {'☑' if st.get('len_ok') else '☐'}  (текущ.: {d.get('max_text_len', '—')})\\n"
-        f"2) Макс. номер:  {'☑' if st.get('num_ok') else '☐'}  (текущ.: {d.get('max_number', '—')})\\n"
-        "Выберите этап или укажите по порядку.\\n</pre>"
+        "<pre><b>Пределы ✏️</b>\n"
+        f"1) Длина текста: {'☑' if st.get('len_ok') else '☐'}  (текущ.: {d.get('max_text_len', '—')})\n"
+        f"2) Макс. номер:  {'☑' if st.get('num_ok') else '☐'}  (текущ.: {d.get('max_number', '—')})\n"
+        "Выберите этап или укажите по порядку.\n</pre>"
     )
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(types.InlineKeyboardButton("1) Ввести длину текста", callback_data="setup:limits_edit:text_len"),
@@ -63,13 +63,13 @@ def render_limits_progress(chat_id: int):
 def ask_limit_len(chat_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:limits"))
-    edit(chat_id, "<b>Пределы ✏️ — шаг 1/2.</b>\\nВведите <b>максимальную длину текста</b> (например, 12).", kb)
+    edit(chat_id, "<b>Пределы ✏️ — шаг 1/2.</b>\nВведите <b>максимальную длину текста</b> (например, 12).", kb)
     WIZ[chat_id]["stage"] = "limits_len"
 
 def ask_limit_num(chat_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:limits"))
-    edit(chat_id, "<b>Пределы ✏️ — шаг 2/2.</b>\\nВведите <b>максимальный номер</b> (например, 99).", kb)
+    edit(chat_id, "<b>Пределы ✏️ — шаг 2/2.</b>\nВведите <b>максимальный номер</b> (например, 99).", kb)
     WIZ[chat_id]["stage"] = "limits_num"
 
 def toggle_feature(chat_id: int, which: str):

@@ -31,7 +31,7 @@ def open_sizes(chat_id: int, mk: str, ck: str):
         kb.add(types.InlineKeyboardButton(f"{sz}: {qty}", callback_data=f"setup:inv_sz_qty:{mk}:{ck}:{sz}"))
     kb.add(types.InlineKeyboardButton("➕ Применить ко всем размерам", callback_data=f"setup:inv_sz_apply_all:{mk}:{ck}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_sizes_colors:{mk}"))
-    edit(chat_id, f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}/{WIZ[chat_id]['data']['merch'][mk]['colors'][ck]['name_ru']}</b> — выберите размер.", kb)
+    edit(chat_id, f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}/{WIZ[chat_id]['data']['merch'][mk]['colors'][ck]['name_ru']}</b> — выберите размер или задайте число для всех.", kb)
 
 def open_qty_spinner(chat_id: int, mk: str, ck: str, sz: str):
     WIZ[chat_id]["stage"] = f"inv_sz_qty:{mk}:{ck}:{sz}"
@@ -53,7 +53,7 @@ def open_qty_spinner(chat_id: int, mk: str, ck: str, sz: str):
     )
     kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_sz_save:{mk}:{ck}:{sz}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к размерам", callback_data=f"setup:inv_sizes_sizes:{mk}:{ck}"))
-    edit(chat_id, f"Введите количество для <b>{mk}/{ck}/{sz}</b>:\\nТекущее: <b>{cur}</b>", kb)
+    edit(chat_id, f"Введите количество для <b>{mk}/{ck}/{sz}</b>:\nТекущее: <b>{cur}</b>", kb)
 
 def adjust_qty(chat_id: int, mk: str, ck: str, sz: str, delta: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_merch", {}).setdefault(mk, {}).setdefault(ck, {}).setdefault("sizes", {})
@@ -83,5 +83,6 @@ def set_all_sizes(chat_id: int, mk: str, ck: str, val: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_merch", {}).setdefault(mk, {}).setdefault(ck, {}).setdefault("sizes", {})
     sizes = WIZ[chat_id]["data"]["merch"][mk]["sizes"]
     for sz in sizes:
-        inv[sz] = val
+        if inv.get(sz, 0) == 0:
+            inv[sz] = val
     open_sizes(chat_id, mk, ck)
