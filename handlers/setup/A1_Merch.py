@@ -10,7 +10,8 @@ ONESIZE        = ["OneSize"]
 
 def _header_with_tree(chat_id: int, title: str) -> str:
     d = WIZ[chat_id]["data"]
-    return "<pre>" + title + "\\n\\n<b>Структура</b>\\n" + (merch_tree(d) or "—") + "\\n</pre>"
+    tree = merch_tree(d)
+    return f"<b>{title}</b>\\n<pre>Структура\\n{tree}\\n</pre>"
 
 def render_types(chat_id: int):
     d = WIZ[chat_id].setdefault("data", {})
@@ -99,6 +100,7 @@ def render_sizes(chat_id: int, mk: str):
     if sizes:
         kb.add(types.InlineKeyboardButton("Сохранить и следующий", callback_data="setup:next_merch_or_done"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к цветам", callback_data=f"setup:colors:{mk}"))
+    kb.add(types.InlineKeyboardButton("↩️ К видам мерча", callback_data="setup:merch"))
     edit(chat_id, _header_with_tree(chat_id, f"Шаг 1.2/4. <b>{item['name_ru']}</b> — размеры.\\nТекущие: {sizes_text}"), kb)
     WIZ[chat_id]["stage"] = f"sizes:{mk}"
 
