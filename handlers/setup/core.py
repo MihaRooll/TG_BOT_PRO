@@ -97,8 +97,6 @@ def home_text(d: dict) -> str:
     inv_tmpls   = d.get("_inv_tmpls", {})   if nums_set else True
 
     block: List[str] = []
-    block.append("<b>🎛 МАСТЕР НАСТРОЙКИ</b>\\n")
-
     block.append(f"🛍 Мерч [{_on_off(merch_on)}]")
     block.append(f"├─ Цвета: {'✅' if colors_ok else '❌'}")
     block.append(f"└─ Размеры: {'✅' if sizes_ok else '❌'}\\n")
@@ -129,4 +127,5 @@ def home_text(d: dict) -> str:
     block.append(f"├─ Цифры: {'✅' if bool(inv_numbers) else '❌'}")
     block.append(f"└─ Макеты: {'✅' if bool(inv_tmpls) else '❌'}")
 
-    return "\\n".join(block)
+    body = "\\n".join(block)
+    return f"<b>🎛 МАСТЕР НАСТРОЙКИ</b>\\n<pre>{body}</pre>"
