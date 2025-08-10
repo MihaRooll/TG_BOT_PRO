@@ -9,19 +9,16 @@ from services.inventory import (
     get_merch_inv, get_letters_inv, get_numbers_inv, get_templates_inv,
     dec_size, dec_letter, dec_number, dec_template
 )
-from repositories.files import load_json, save_json
 from services.validators import validate_text, validate_number
 from utils.tg import safe_delete, safe_edit_message
 
 # Временные заказы (по chat_id)
 ORD: dict[int, dict] = {}
 
-ADMIN_BIND_FILE = "admin_chat.json"
-
 def _admin_target():
-    b = load_json(ADMIN_BIND_FILE)
-    if b:
-        return b.get("chat_id"), b.get("thread_id")
+    chat_id, thread_id = get_admin_bind()
+    if chat_id:
+        return chat_id, thread_id
     return getattr(config, "ADMIN_CHAT_ID", None), None
 
 def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
