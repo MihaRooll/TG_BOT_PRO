@@ -23,7 +23,7 @@ def render_builder(chat_id: int):
     kb.add(types.InlineKeyboardButton("➕ Добавить номер", callback_data="setup:tmpl_num_add"))
     kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:tmpl_num_done"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
-    edit(chat_id, f"Шаг 3/4. Ввод номеров макетов ({mk}).\\nТекущий: <b>{buf or '—'}</b>\\nСписок: {existing}", kb)
+    edit(chat_id, f"Шаг 3/4. Ввод номеров макетов ({mk}).\nТекущий: <b>{buf or '—'}</b>\nСписок: {existing}", kb)
     WIZ[chat_id]["stage"] = "tmpl_numbers_builder"
 
 def keypress(chat_id: int, k: str):
