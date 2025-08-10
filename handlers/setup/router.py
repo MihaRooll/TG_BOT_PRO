@@ -14,9 +14,23 @@ from . import A7_TemplatesColors  as TCOL
 from . import A8_TemplatesCollages as TCOLL
 from . import A9_InventorySizes   as INV
 
+
+@bot.message_handler(commands=["setup"])
+def setup_cmd(message: types.Message):
+    from services.roles import get_role
+    if get_role(message.chat.id) not in ("coord", "admin"):
+        return
+    chat_id = message.chat.id
+    ensure(chat_id, message.message_id)
+    O.render_home(chat_id)
+
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
+    from services.roles import get_role
     chat_id = c.message.chat.id
+    if get_role(chat_id) not in ("coord", "admin"):
+        bot.answer_callback_query(c.id)
+        return
     ensure(chat_id, c.message.message_id)
     if anchor(chat_id) != c.message.message_id:
         bot.answer_callback_query(c.id)
@@ -83,6 +97,7 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Step 4: Inventory ---
     if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
+    if cmd == "inv_sizes_home":         INV.open_inventory_sizes(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
     if cmd == "inv_sz_qty":             INV.open_qty_spinner(chat_id, rest[0], rest[1], rest[2]); return

@@ -18,6 +18,7 @@ def open_colors(chat_id: int, mk: str):
     kb = types.InlineKeyboardMarkup(row_width=3)
     for ck, ci in colors.items():
         kb.add(types.InlineKeyboardButton(ci["name_ru"], callback_data=f"setup:inv_sizes_sizes:{mk}:{ck}"))
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:inv_letters"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_sizes_home"))
     edit(chat_id, f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}</b> — выберите цвет.", kb)
 
