@@ -15,6 +15,20 @@ from utils.tg import safe_delete, safe_edit_message
 # Временные заказы (по chat_id)
 ORD: dict[int, dict] = {}
 
+
+@bot.message_handler(commands=["order"])
+def order_cmd(message: types.Message):
+    from services.roles import get_role
+    if get_role(message.chat.id) not in ("promo", "coord", "admin"):
+        return
+    s = get_settings()
+    if not s.get("configured"):
+        bot.send_message(message.chat.id, "Бот не настроен. Выполните /setup")
+        return
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("Начать", callback_data="order:start"))
+    bot.send_message(message.chat.id, "Оформление заказа", reply_markup=kb)
+
 def _admin_target():
     chat_id, thread_id = get_admin_bind()
     if chat_id:
@@ -39,6 +53,10 @@ def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:start")
 def order_start(c: types.CallbackQuery):
+    from services.roles import get_role
+    if get_role(c.message.chat.id) not in ("promo", "coord", "admin"):
+        bot.answer_callback_query(c.id)
+        return
     s = get_settings()
     if not s.get("configured"):
         bot.answer_callback_query(c.id)
