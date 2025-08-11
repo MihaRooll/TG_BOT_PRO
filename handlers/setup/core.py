@@ -5,6 +5,7 @@ from typing import Dict, Any, Tuple, List
 from telebot import types
 from telebot.apihelper import ApiTelegramException
 from bot import bot
+from utils.tg import color_name_ru
 
 # Состояние мастера по chat_id
 WIZ: Dict[int, Dict[str, Any]] = {}  # {"anchor_id", "stage", "data", "_sig"}
@@ -98,11 +99,12 @@ def home_text(d: dict) -> str:
     inv_tmpls   = d.get("_inv_tmpls", {})   if nums_set else True
 
     block: List[str] = []
-    block.append(f"🛍 Мерч [{_on_off(merch_on)}]")
+    block.append(f"🛍 Мерч [{_on_off(merch_on)}]{' ✅' if merch_on else ''}")
     block.append(f"├─ Цвета: {'✅' if colors_ok else '❌'}")
     block.append(f"└─ Размеры: {'✅' if sizes_ok else '❌'}\n")
 
-    block.append(f"🔤 Буквы [{_on_off(feats.get('letters', False))}]")
+    letters_on = feats.get('letters', False)
+    block.append(f"🔤 Буквы [{_on_off(letters_on)}]{' ✅' if letters_on else ''}")
     alph: List[str] = []
     if rules.get('allow_latin'): alph.append("LAT")
     if rules.get('allow_cyrillic'): alph.append("CYR")
@@ -112,21 +114,34 @@ def home_text(d: dict) -> str:
     block.append("├─ Пределы:")
     block.append(f"│ ├─ Текст: ≤ {rules.get('max_text_len', '—')} симв")
     block.append(f"│ └─ Номер: ≤ {rules.get('max_number', '—')}")
-    block.append(f"└─ Палитра: {(' | ').join(pal) if pal else '—'}\n")
+    pal_str = (' | ').join(color_name_ru(c) for c in pal) if pal else '—'
+    block.append(f"└─ Палитра: {pal_str}\n")
 
-    block.append(f"🔢 Цифры [{_on_off(feats.get('numbers', False))}]")
+    numbers_on = feats.get('numbers', False)
+    block.append(f"🔢 Цифры [{_on_off(numbers_on)}]{' ✅' if numbers_on else ''}")
     block.append("└─ Соответствия:")
     block.append(f"Мерч/Цвет → Цвет текста {'✅' if mapping_ok else '❌'}\n")
 
-    block.append(f"🖼 Макеты [{_on_off(nums_set)}]")
+    block.append(f"🖼 Макеты [{_on_off(nums_set)}]{' ✅' if nums_set else ''}")
     block.append(f"├─ Номера: {'✅' if nums_set else '❌'}")
     block.append(f"└─ Коллажи: {coll_count} {'🟢' if coll_count else '🚫'}\n")
 
-    block.append(f"📦 Остатки [{_on_off(bool(inv_merch))}]")
-    block.append(f"├─ Размеры: {'✅' if bool(inv_merch) else '❌'}")
-    block.append(f"├─ Буквы: {'✅' if bool(inv_letters) else '❌'}")
-    block.append(f"├─ Цифры: {'✅' if bool(inv_numbers) else '❌'}")
-    block.append(f"└─ Макеты: {'✅' if bool(inv_tmpls) else '❌'}")
+    inv_on = bool(inv_merch or inv_letters or inv_numbers or inv_tmpls)
+    block.append(
+        f"📦 Остатки [{_on_off(inv_on)}]{' ✅ — внесли' if inv_on else ' — не внесли'}"
+    )
+    block.append(
+        f"├─ Размеры: {'✅ — внесли' if bool(inv_merch) else '— не внесли'}"
+    )
+    block.append(
+        f"├─ Буквы: {'✅ — внесли' if bool(inv_letters) else '— не внесли'}"
+    )
+    block.append(
+        f"├─ Цифры: {'✅ — внесли' if bool(inv_numbers) else '— не внесли'}"
+    )
+    block.append(
+        f"└─ Макеты: {'✅ — внесли' if bool(inv_tmpls) else '— не внесли'}"
+    )
 
     body = "\n".join(block)
     return f"<b>🎛 МАСТЕР НАСТРОЙКИ</b>\n<pre>{body}</pre>"
