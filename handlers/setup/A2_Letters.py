@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit
+from utils.tg import color_name_ru
 
 def render_letters_hub(chat_id: int):
     d = WIZ[chat_id]["data"]
@@ -21,12 +22,12 @@ def render_letters_hub(chat_id: int):
         f"   ├─ <b>Статус:</b> {letters_status}\n"
         f"   ├─ <b>Алфавит:</b> {alphabet_line} ▸ \n"
         f"   ├─ <b>Пробел:</b> {space_line}\n"
-        f"   └─ <b>Макс. длина:</b> ≤{rules.get('max_text_len','—')} симв\n\n"
+        f"   └─ <b>Макс. длина:</b> ≤{rules.get('max_text_len','—')} символов\n\n"
         "<b>✨ Цифры</b>\n"
         f"   ├─ <b>Статус:</b> {numbers_status}\n"
         f"   └─ <b>Макс. номер:</b> ≤{rules.get('max_number','—')}\n\n"
         "<b>🎨 Палитра цветов текста</b>\n"
-        f"   └─ {', '.join(pal) if pal else '—'}\n"
+        f"   └─ {', '.join(color_name_ru(c) for c in pal) if pal else '—'}\n"
         "</pre>"
     )
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -47,15 +48,15 @@ def render_limits_progress(chat_id: int):
     st = WIZ[chat_id]["data"].setdefault("_limits", {"len_ok": bool(d.get('max_text_len')), "num_ok": bool(d.get('max_number'))})
     text = (
         "<pre><b>Пределы ✏️</b>\n"
-        f"1) Длина текста: {'☑' if st.get('len_ok') else '☐'}  (текущ.: {d.get('max_text_len', '—')})\n"
-        f"2) Макс. номер:  {'☑' if st.get('num_ok') else '☐'}  (текущ.: {d.get('max_number', '—')})\n"
+        f"1) Длина текста: {'✅' if st.get('len_ok') else '—'}  (текущ.: {d.get('max_text_len', '—')})\n"
+        f"2) Макс. номер:  {'✅' if st.get('num_ok') else '—'}  (текущ.: {d.get('max_number', '—')})\n"
         "Выберите этап или укажите по порядку.\n</pre>"
     )
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(types.InlineKeyboardButton("1) Ввести длину текста", callback_data="setup:limits_edit:text_len"),
             types.InlineKeyboardButton("2) Ввести макс. номер", callback_data="setup:limits_edit:max_num"))
     if st.get("len_ok") and st.get("num_ok"):
-        kb.add(types.InlineKeyboardButton("Готово ☑", callback_data="setup:limits_done"))
+        kb.add(types.InlineKeyboardButton("Готово ✅", callback_data="setup:limits_done"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:letters"))
     edit(chat_id, text, kb)
     WIZ[chat_id]["stage"] = "limits_progress"
