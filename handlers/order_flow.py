@@ -10,7 +10,7 @@ from services.inventory import (
     dec_size, dec_letter, dec_number, dec_template
 )
 from services.validators import validate_text, validate_number
-from utils.tg import safe_delete, safe_edit_message
+from utils.tg import safe_delete, safe_edit_message, color_name_ru
 
 # Временные заказы (по chat_id)
 ORD: dict[int, dict] = {}
@@ -39,138 +39,283 @@ def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:start")
 def order_start(c: types.CallbackQuery):
+    chat_id = c.message.chat.id
+    mid = c.message.message_id
     s = get_settings()
     if not s.get("configured"):
         bot.answer_callback_query(c.id)
-        bot.send_message(c.message.chat.id, "Бот не настроен. Нажмите /start и пройдите мастер.")
+        bot.send_message(chat_id, "Бот не настроен. Нажмите /start и пройдите мастер.")
         return
-    merch = s.get("merch", {})
+    inv = get_merch_inv()
+    avail = []
+    for mk, info in s.get("merch", {}).items():
+        colors = s.get("merch", {}).get(mk, {}).get("colors", {})
+        for ck in colors:
+            sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
+            if any(q > 0 for q in sizes.values()):
+                avail.append((mk, info))
+                break
+    ORD[chat_id] = {"mid": mid}
+    if not avail:
+        safe_edit_message(bot, chat_id, mid, "Нет доступного мерча. Обновите остатки.")
+        return
+    if len(avail) == 1:
+        mk, info = avail[0]
+        ORD[chat_id]["merch"] = mk
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {info.get('name_ru', mk)} (других вариантов нет)")
+        _prompt_colors(chat_id, mk)
+        return
     kb = types.InlineKeyboardMarkup(row_width=2)
-    for mk, info in merch.items():
+    for mk, info in avail:
         kb.add(types.InlineKeyboardButton(info.get("name_ru", mk), callback_data=f"order:m:{mk}"))
-    bot.edit_message_text("Выберите вид мерча:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    safe_edit_message(bot, chat_id, mid, "Выберите вид мерча:", kb)
+
+
+def _prompt_colors(chat_id: int, mk: str):
+    s = get_settings()
+    inv = get_merch_inv()
+    colors = s.get("merch", {}).get(mk, {}).get("colors", {})
+    avail = []
+    for ck, info in colors.items():
+        sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
+        if any(q > 0 for q in sizes.values()):
+            avail.append((ck, info.get("name_ru", ck)))
+    mid = ORD[chat_id]["mid"]
+    if not avail:
+        safe_edit_message(bot, chat_id, mid, "Нет доступных цветов. ⬅️ Назад")
+        return
+    if len(avail) == 1:
+        ck, name = avail[0]
+        ORD[chat_id]["color"] = ck
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {name} (других вариантов нет)")
+        _prompt_sizes(chat_id, mk, ck)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for ck, name in avail:
+        kb.add(types.InlineKeyboardButton(name, callback_data=f"order:c:{mk}:{ck}"))
+    safe_edit_message(bot, chat_id, mid, "Выберите цвет:", kb)
+
+
+def _prompt_sizes(chat_id: int, mk: str, ck: str):
+    inv = get_merch_inv()
+    sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
+    avail = [sz for sz, q in sizes.items() if q > 0]
+    mid = ORD[chat_id]["mid"]
+    if not avail:
+        safe_edit_message(bot, chat_id, mid, "Нет доступных размеров. ⬅️ Назад")
+        return
+    if len(avail) == 1:
+        sz = avail[0]
+        ORD[chat_id]["size"] = sz
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {sz} (других вариантов нет)")
+        _after_size(chat_id)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for sz in avail:
+        kb.add(types.InlineKeyboardButton(sz, callback_data=f"order:s:{mk}:{ck}:{sz}"))
+    safe_edit_message(bot, chat_id, mid, "Выберите размер:", kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:m:"))
 def order_choose_merch(c: types.CallbackQuery):
+    chat_id = c.message.chat.id
     mk = c.data.split(":")[2]
-    s = get_settings()
-    inv = get_merch_inv()
-    # показать только цвета, у которых есть доступные размеры (>0)
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    added = False
-    for ck, info in s.get("merch", {}).get(mk, {}).get("colors", {}).items():
-        sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
-        if any(q > 0 for q in sizes.values()):
-            kb.add(types.InlineKeyboardButton(info.get("name_ru", ck), callback_data=f"order:c:{mk}:{ck}"))
-            added = True
-    if not added:
-        bot.answer_callback_query(c.id)
-        bot.send_message(c.message.chat.id, "К сожалению, нет доступных цветов/размеров. Обновите остатки.")
-        return
-    ORD[c.message.chat.id] = {"merch": mk}
-    bot.edit_message_text("Выберите цвет:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    ORD.setdefault(chat_id, {})["merch"] = mk
+    _prompt_colors(chat_id, mk)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:c:"))
 def order_choose_color(c: types.CallbackQuery):
+    chat_id = c.message.chat.id
     _, _, mk, ck = c.data.split(":")
-    inv = get_merch_inv()
-    sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    for sz, q in sizes.items():
-        if q > 0:
-            kb.add(types.InlineKeyboardButton(f"{sz}", callback_data=f"order:s:{mk}:{ck}:{sz}"))
-    ORD[c.message.chat.id].update({"color": ck})
-    bot.edit_message_text("Выберите размер:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    ORD.setdefault(chat_id, {})["color"] = ck
+    _prompt_sizes(chat_id, mk, ck)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:s:"))
 def order_choose_size(c: types.CallbackQuery):
-    _, _, mk, ck, sz = c.data.split(":")
-    ORD[c.message.chat.id].update({"size": sz})
-    # спросим: нужен текст и/или номер?
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("Текст", callback_data=f"order:text:{mk}:{ck}:{sz}"),
-           types.InlineKeyboardButton("Номер", callback_data=f"order:number:{mk}:{ck}:{sz}"))
-    kb.add(types.InlineKeyboardButton("Без текста/номера", callback_data=f"order:skiptn:{mk}:{ck}:{sz}"))
-    bot.edit_message_text("Добавить надпись и/или номер?", c.message.chat.id, c.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:text:"))
-def order_text_choose_color(c: types.CallbackQuery):
-    _, _, mk, ck, sz = c.data.split(":")
-    s = get_settings()
-    tcolors = s.get("text_colors", {}).get(mk, {}).get(ck, [])
-    if not tcolors:
-        bot.answer_callback_query(c.id, "Нет допустимых цветов текста для этого цвета мерча.", show_alert=True)
-        return
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    for tc in tcolors:
-        kb.add(types.InlineKeyboardButton(tc, callback_data=f"order:textc:{mk}:{ck}:{sz}:{tc}"))
-    bot.edit_message_text("Выберите цвет текста:", c.message.chat.id, c.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:textc:"))
-def order_text_input(c: types.CallbackQuery):
-    _, _, mk, ck, sz, tc = c.data.split(":")
     chat_id = c.message.chat.id
-    ORD[chat_id]["text_color"] = tc
-    bot.edit_message_text("Введите текст (только буквы выбранных алфавитов и пробелы):", chat_id, c.message.message_id)
+    _, _, mk, ck, sz = c.data.split(":")
+    ORD.setdefault(chat_id, {})["size"] = sz
+    _after_size(chat_id)
+    
+def _after_size(chat_id: int):
+    s = get_settings()
+    feats = s.get("features", {})
+    if feats.get("letters"):
+        _prompt_text(chat_id)
+    elif feats.get("numbers"):
+        _prompt_number(chat_id)
+    else:
+        safe_edit_message(bot, chat_id, ORD[chat_id]["mid"], "Перейдём к выбору макетов.")
+        _prompt_templates(chat_id)
+
+
+def _prompt_text(chat_id: int):
+    mid = ORD[chat_id]["mid"]
+    safe_edit_message(bot, chat_id, mid, "Введите текст (только буквы выбранных алфавитов и пробелы):")
     ORD[chat_id]["step"] = "text_wait"
+
 
 @bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "text_wait")
 def order_text_set(m: types.Message):
-    ok, msg = validate_text(m.text.strip())
-    if not ok:
-        bot.reply_to(m, "⚠️ " + msg); return
-    ORD[m.chat.id]["text"] = m.text.strip()
-    ORD[m.chat.id].pop("step", None)
-    bot.reply_to(m, "Текст принят. Использовать номер? /number или /skip")
-
-@bot.message_handler(commands=["number"])
-def cmd_number(m: types.Message):
     chat_id = m.chat.id
-    if chat_id not in ORD: return
-    s = get_settings()
-    mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
-    tcolors = s.get("text_colors", {}).get(mk, {}).get(ck, [])
-    if not tcolors:
-        bot.reply_to(m, "Для выбранного цвета мерча нет допустимых цветов цифр."); return
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    for tc in tcolors:
-        kb.add(types.InlineKeyboardButton(tc, callback_data=f"order:numc:{mk}:{ck}:{ORD[chat_id]['size']}:{tc}"))
-    bot.send_message(chat_id, "Выберите цвет цифр:", reply_markup=kb)
+    mid = ORD.get(chat_id, {}).get("mid")
+    text = m.text.strip()
+    ok, msg = validate_text(text)
+    if not ok:
+        safe_edit_message(bot, chat_id, mid, f"⚠️ {msg}\n\nВведите текст (только буквы выбранных алфавитов и пробелы):")
+        safe_delete(bot, chat_id, m.message_id)
+        return
+    ORD[chat_id]["text"] = text
+    ORD[chat_id].pop("step", None)
+    safe_delete(bot, chat_id, m.message_id)
+    _prompt_text_color(chat_id)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:number:"))
-def order_number_choose_color(c: types.CallbackQuery):
-    _, _, mk, ck, sz = c.data.split(":")
-    s = get_settings()
-    tcolors = s.get("text_colors", {}).get(mk, {}).get(ck, [])
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    for tc in tcolors:
-        kb.add(types.InlineKeyboardButton(tc, callback_data=f"order:numc:{mk}:{ck}:{sz}:{tc}"))
-    bot.edit_message_text("Выберите цвет цифр:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:numc:"))
-def order_number_input(c: types.CallbackQuery):
-    _, _, mk, ck, sz, tc = c.data.split(":")
+def _prompt_text_color(chat_id: int):
+    s = get_settings()
+    mk = ORD[chat_id]["merch"]
+    ck = ORD[chat_id]["color"]
+    tcolors = s.get("text_colors", {}).get(mk, {}).get(ck, [])
+    inv = get_letters_inv()
+    avail = []
+    for tc in tcolors:
+        if any(q > 0 for q in inv.get(tc, {}).get("letters", {}).values()):
+            avail.append(tc)
+    mid = ORD[chat_id]["mid"]
+    if not avail:
+        safe_edit_message(bot, chat_id, mid, "Нет доступных цветов текста.")
+        _prompt_number(chat_id)
+        return
+    if len(avail) == 1:
+        tc = avail[0]
+        ORD[chat_id]["text_color"] = tc
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {color_name_ru(tc)} (других вариантов нет)")
+        _prompt_number(chat_id)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for tc in avail:
+        kb.add(types.InlineKeyboardButton(color_name_ru(tc), callback_data=f"order:textc:{tc}"))
+    safe_edit_message(bot, chat_id, mid, "Выберите цвет текста:", kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("order:textc:"))
+def order_text_color_cb(c: types.CallbackQuery):
     chat_id = c.message.chat.id
-    ORD[chat_id]["number_color"] = tc
-    bot.edit_message_text("Введите номер (0..N):", chat_id, c.message.message_id)
+    tc = c.data.split(":")[2]
+    ORD.setdefault(chat_id, {})["text_color"] = tc
+    letters_inv = get_letters_inv()
+    counts = {}
+    for ch in ORD[chat_id]["text"].replace(" ", "").upper():
+        counts[ch] = counts.get(ch, 0) + 1
+    miss = {ch: cnt for ch, cnt in counts.items()
+            if letters_inv.get(tc, {}).get("letters", {}).get(ch, 0) < cnt}
+    if miss:
+        msg_lines = ["⚠️ Недостаточно символов:"]
+        msg_lines.append("• Буквы: " + ", ".join(f"{k} ×{v}" for k, v in miss.items()))
+        safe_edit_message(bot, chat_id, ORD[chat_id]["mid"], "\n".join(msg_lines))
+        _prompt_text(chat_id)
+        return
+    _prompt_number(chat_id)
+
+
+def _prompt_number(chat_id: int):
+    s = get_settings()
+    if not s.get("features", {}).get("numbers"):
+        _prompt_templates(chat_id)
+        return
+    mid = ORD[chat_id]["mid"]
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("Без номера", callback_data="order:number_skip"))
+    safe_edit_message(bot, chat_id, mid, "Введите номер (0..N):", kb)
     ORD[chat_id]["step"] = "number_wait"
+
 
 @bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "number_wait")
 def order_number_set(m: types.Message):
-    ok, msg = validate_number(m.text.strip())
+    chat_id = m.chat.id
+    mid = ORD.get(chat_id, {}).get("mid")
+    num = m.text.strip()
+    ok, msg = validate_number(num)
     if not ok:
-        bot.reply_to(m, "⚠️ " + msg); return
-    ORD[m.chat.id]["number"] = m.text.strip()
-    ORD[m.chat.id].pop("step", None)
-    _prompt_templates(m.chat.id)
+        safe_edit_message(bot, chat_id, mid, f"⚠️ {msg}\n\nВведите номер (0..N):")
+        safe_delete(bot, chat_id, m.message_id)
+        return
+    ORD[chat_id]["number"] = num
+    ORD[chat_id].pop("step", None)
+    safe_delete(bot, chat_id, m.message_id)
+    _prompt_number_color(chat_id)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("order:skiptn:"))
-def order_skip_text_number(c: types.CallbackQuery):
+
+@bot.callback_query_handler(func=lambda c: c.data == "order:number_skip")
+def order_number_skip(c: types.CallbackQuery):
     chat_id = c.message.chat.id
-    ORD[chat_id]["text"] = "Без текста"
-    ORD[chat_id]["number"] = "Без номера"
-    bot.edit_message_text("Перейдём к выбору макетов.", chat_id, c.message.message_id)
+    ORD.setdefault(chat_id, {})["number"] = "Без номера"
+    mid = ORD.get(chat_id, {}).get("mid", c.message.message_id)
+    safe_edit_message(bot, chat_id, mid, "Перейдём к выбору макетов.")
     _prompt_templates(chat_id)
+
+
+def _prompt_number_color(chat_id: int):
+    s = get_settings()
+    mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
+    tcolors = s.get("text_colors", {}).get(mk, {}).get(ck, [])
+    inv = get_numbers_inv()
+    avail = []
+    for tc in tcolors:
+        if any(q > 0 for q in inv.get(tc, {}).get("numbers", {}).values()):
+            avail.append(tc)
+    mid = ORD[chat_id]["mid"]
+    if not avail:
+        _prompt_templates(chat_id)
+        return
+    if len(avail) == 1:
+        tc = avail[0]
+        ORD[chat_id]["number_color"] = tc
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {color_name_ru(tc)} (других вариантов нет)")
+        _prompt_templates(chat_id)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for tc in avail:
+        kb.add(types.InlineKeyboardButton(color_name_ru(tc), callback_data=f"order:numc:{tc}"))
+    safe_edit_message(bot, chat_id, mid, "Выберите цвет цифр:", kb)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("order:numc:"))
+def order_number_color_cb(c: types.CallbackQuery):
+    chat_id = c.message.chat.id
+    tc = c.data.split(":")[2]
+    ORD.setdefault(chat_id, {})["number_color"] = tc
+    numbers_inv = get_numbers_inv()
+    counts = {}
+    for dg in ORD[chat_id]["number"]:
+        counts[dg] = counts.get(dg, 0) + 1
+    miss = {dg: cnt for dg, cnt in counts.items()
+            if numbers_inv.get(tc, {}).get("numbers", {}).get(dg, 0) < cnt}
+    if miss:
+        msg_lines = ["⚠️ Недостаточно символов:"]
+        msg_lines.append("• Цифры: " + ", ".join(f"{k} ×{v}" for k, v in miss.items()))
+        safe_edit_message(bot, chat_id, ORD[chat_id]["mid"], "\n".join(msg_lines))
+        _prompt_number(chat_id)
+        return
+    _prompt_templates(chat_id)
+
+def _render_tpl_step(chat_id: int):
+    avail = ORD[chat_id]["avail_tpls"]
+    sel = ORD[chat_id].get("selected_tpls", [])
+    limit = ORD[chat_id].get("tpl_limit", len(avail))
+    kb = types.InlineKeyboardMarkup(row_width=4)
+    for n in sorted(avail):
+        label = f"🟩 {n}" if n in sel else n
+        kb.add(types.InlineKeyboardButton(label, callback_data=f"order:tpl:{n}"))
+    kb.add(types.InlineKeyboardButton("Дальше", callback_data="order:tpl_done"))
+    kb.add(types.InlineKeyboardButton("Очистить выбор макетов", callback_data="order:tpl_clear"))
+    text = f"Макеты ({len(sel)}/{limit}): {', '.join(sel) if sel else '—'}"
+    safe_edit_message(bot, chat_id, ORD[chat_id]["mid"], text, kb)
+
 
 def _prompt_templates(chat_id: int):
     s = get_settings(); invt = get_templates_inv()
@@ -187,47 +332,60 @@ def _prompt_templates(chat_id: int):
         for fid in tmpl_def["collages"][:5]:
             try: bot.send_photo(chat_id, fid)
             except Exception: pass
+    mid = ORD[chat_id]["mid"]
     if not avail:
+        safe_edit_message(bot, chat_id, mid, "Доступных макетов нет.")
         _prompt_comment_phone(chat_id)
         return
-    kb = types.InlineKeyboardMarkup(row_width=4)
-    for n in sorted(avail):
-        kb.add(types.InlineKeyboardButton(n, callback_data=f"order:tpl:{n}"))
-    kb.add(types.InlineKeyboardButton("Готово", callback_data="order:tpl_done"),
-           types.InlineKeyboardButton("Без макета", callback_data="order:tpl_none"))
-    bot.send_message(chat_id, "Выберите номера макетов (можно несколько):", reply_markup=kb)
+    if len(avail) == 1:
+        ORD[chat_id]["templates"] = avail[0]
+        safe_edit_message(bot, chat_id, mid,
+                          f"Выбран автоматически: {avail[0]} (других вариантов нет)")
+        _prompt_comment_phone(chat_id)
+        return
+    ORD[chat_id]["avail_tpls"] = avail
     ORD[chat_id]["selected_tpls"] = []
+    ORD[chat_id]["tpl_limit"] = tmpl_def.get("limit", len(avail))
+    _render_tpl_step(chat_id)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:tpl"))
 def order_tpl_cb(c: types.CallbackQuery):
     chat_id = c.message.chat.id
-    if c.data == "order:tpl_none":
-        ORD[chat_id]["templates"] = "Без макета"
-        bot.answer_callback_query(c.id, "Без макета")
-        _prompt_comment_phone(chat_id)
-        return
     if c.data == "order:tpl_done":
         ORD[chat_id]["templates"] = ", ".join(sorted(set(ORD[chat_id].get("selected_tpls", [])))) or "Без макета"
         _prompt_comment_phone(chat_id)
+        return
+    if c.data == "order:tpl_clear":
+        ORD[chat_id]["selected_tpls"] = []
+        bot.answer_callback_query(c.id, "Очищено")
+        _render_tpl_step(chat_id)
         return
     n = c.data.split(":")[2]
     lst = ORD[chat_id].setdefault("selected_tpls", [])
     if n in lst:
         lst.remove(n); bot.answer_callback_query(c.id, f"Убрано: {n}")
     else:
-        lst.append(n); bot.answer_callback_query(c.id, f"Добавлено: {n}")
+        lim = ORD[chat_id].get("tpl_limit", len(ORD[chat_id].get("avail_tpls", [])))
+        if len(lst) < lim:
+            lst.append(n); bot.answer_callback_query(c.id, f"Добавлено: {n}")
+        else:
+            bot.answer_callback_query(c.id, "Достигнут лимит")
+    _render_tpl_step(chat_id)
 
 def _prompt_comment_phone(chat_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Пропустить", callback_data="order:skip_comment"))
-    bot.send_message(chat_id, "Добавить комментарий к заказу?", reply_markup=kb)
+    mid = ORD[chat_id]["mid"]
+    safe_edit_message(bot, chat_id, mid, "Добавить комментарий к заказу?", kb)
     ORD[chat_id]["step"] = "comment_wait"
 
 @bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "comment_wait")
 def order_comment_set(m: types.Message):
-    ORD[m.chat.id]["comment"] = m.text.strip()
-    ORD[m.chat.id].pop("step", None)
-    _prompt_phone(m.chat.id)
+    chat_id = m.chat.id
+    ORD[chat_id]["comment"] = m.text.strip()
+    ORD[chat_id].pop("step", None)
+    safe_delete(bot, chat_id, m.message_id)
+    _prompt_phone(chat_id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:skip_comment")
 def order_skip_comment(c: types.CallbackQuery):
@@ -239,14 +397,17 @@ def order_skip_comment(c: types.CallbackQuery):
 def _prompt_phone(chat_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Пропустить", callback_data="order:skip_phone"))
-    bot.send_message(chat_id, "Введите номер телефона (или пропустите):", reply_markup=kb)
+    mid = ORD[chat_id]["mid"]
+    safe_edit_message(bot, chat_id, mid, "Введите номер телефона (или пропустите):", kb)
     ORD[chat_id]["step"] = "phone_wait"
 
 @bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "phone_wait")
 def order_phone_set(m: types.Message):
-    ORD[m.chat.id]["phone"] = m.text.strip()
-    ORD[m.chat.id].pop("step", None)
-    _show_summary(m.chat.id)
+    chat_id = m.chat.id
+    ORD[chat_id]["phone"] = m.text.strip()
+    ORD[chat_id].pop("step", None)
+    safe_delete(bot, chat_id, m.message_id)
+    _show_summary(chat_id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:skip_phone")
 def order_skip_phone(c: types.CallbackQuery):
@@ -265,23 +426,45 @@ def _show_summary(chat_id: int):
         f"Мерч: {html.escape(merch_name)}",
         f"Цвет: {html.escape(color_name)}",
         f"Размер: {html.escape(d['size'])}",
-        f"Текст: {html.escape(d.get('text','Без текста'))} ({html.escape(d.get('text_color','-'))})",
-        f"Номер: {html.escape(d.get('number','Без номера'))} ({html.escape(d.get('number_color','-'))})",
+        f"Текст: {html.escape(d.get('text','Без текста'))} ({html.escape(color_name_ru(d.get('text_color','-')))})",
+        f"Номер: {html.escape(d.get('number','Без номера'))} ({html.escape(color_name_ru(d.get('number_color','-')))})",
         f"Макеты: {html.escape(d.get('templates','Без макета'))}",
     ]
     if d.get("phone"):
         lines.append(f"Телефон: {html.escape(d['phone'])}")
     if d.get("comment"):
         lines.append(f"Комментарий: {html.escape(d['comment'])}")
+    letters_inv = get_letters_inv(); numbers_inv = get_numbers_inv()
+    miss_lt = []
+    if d.get("text") and d["text"] != "Без текста":
+        for ch in d["text"].replace(" ", "").upper():
+            if letters_inv.get(d.get("text_color"), {}).get("letters", {}).get(ch, 0) <= 0:
+                miss_lt.append(ch)
+    miss_nb = []
+    if d.get("number") and d["number"] != "Без номера":
+        for digit in d["number"]:
+            if numbers_inv.get(d.get("number_color"), {}).get("numbers", {}).get(digit, 0) <= 0:
+                miss_nb.append(digit)
+    if miss_lt:
+        bot.send_message(chat_id, f"⚠️ Не хватает букв: {', '.join(sorted(set(miss_lt)))}")
+        _prompt_text(chat_id)
+        return
+    if miss_nb:
+        bot.send_message(chat_id, f"⚠️ Не хватает цифр: {', '.join(sorted(set(miss_nb)))}")
+        _prompt_number(chat_id)
+        return
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Отправить в печать ✅", callback_data="order:confirm_yes"),
            types.InlineKeyboardButton("Отмена", callback_data="order:confirm_no"))
-    bot.send_message(chat_id, "\n".join(lines), reply_markup=kb)
+    mid = ORD[chat_id]["mid"]
+    safe_edit_message(bot, chat_id, mid, "\n".join(lines), kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:confirm_no")
 def order_confirm_no(c: types.CallbackQuery):
     chat_id = c.message.chat.id
-    bot.edit_message_text("🛑 Заказ отменён. /start — начать заново.", chat_id, c.message.message_id)
+    mid = ORD.get(chat_id, {}).get("mid", c.message.message_id)
+    safe_edit_message(bot, chat_id, mid, "🛑 Заказ отменён. /start — начать заново.")
+    ORD.pop(chat_id, None)
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:confirm_yes")
 def order_confirm_yes(c: types.CallbackQuery):
@@ -297,8 +480,8 @@ def order_confirm_yes(c: types.CallbackQuery):
         f"🛍 Мерч: {html.escape(merch_name)}\n"
         f"🎨 Цвет: {html.escape(color_name)}\n"
         f"📐 Размер: {html.escape(d['size'])}\n"
-        f"📝 Текст: {html.escape(d.get('text','Без текста'))} ({html.escape(d.get('text_color','-'))})\n"
-        f"🔢 Номер: {html.escape(d.get('number','Без номера'))} ({html.escape(d.get('number_color','-'))})\n"
+        f"📝 Текст: {html.escape(d.get('text','Без текста'))} ({html.escape(color_name_ru(d.get('text_color','-')))})\n"
+        f"🔢 Номер: {html.escape(d.get('number','Без номера'))} ({html.escape(color_name_ru(d.get('number_color','-')))})\n"
         f"🖼 Макеты: {html.escape(d.get('templates','Без макета'))}\n"
     )
     if d.get("comment"):
@@ -316,9 +499,11 @@ def order_confirm_yes(c: types.CallbackQuery):
         for num in d["templates"].split(","):
             dec_template(d["merch"], num.strip())
 
-    bot.edit_message_text(final_text, chat_id, c.message.message_id, parse_mode="HTML")
+    mid = ORD.get(chat_id, {}).get("mid", c.message.message_id)
+    safe_edit_message(bot, chat_id, mid, final_text)
     _send_to_admin_or_warn(chat_id, final_text)
 
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Сделать новый заказ", callback_data="order:start"))
     bot.send_message(chat_id, "✅ Заказ оформлен!", reply_markup=kb)
+    ORD.pop(chat_id, None)
