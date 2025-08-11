@@ -14,7 +14,10 @@ def ask_collages_or_next(chat_id: int):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Готово ☑", callback_data="setup:tmpl_collages_done"))
     kb.add(types.InlineKeyboardButton("Пропустить", callback_data="setup:tmpl_collages_done"))
-    edit(chat_id, "Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).", kb)
+    cnt = len(d["templates"][mk].get("collages", []))
+    edit(chat_id,
+         f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nЗагружено коллажей: {cnt}",
+         kb)
     WIZ[chat_id]["stage"] = f"tmpl_collages:{mk}"
 
 def collages_done(chat_id: int):
