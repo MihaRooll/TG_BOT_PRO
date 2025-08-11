@@ -11,5 +11,6 @@ def render_home(chat_id: int):
            types.InlineKeyboardButton("3) Макеты", callback_data="setup:tmpls"))
     kb.add(types.InlineKeyboardButton("4) Остатки", callback_data="setup:inv"),
            types.InlineKeyboardButton("Готово ☑", callback_data="setup:finish"))
+    kb.add(types.InlineKeyboardButton("Сбросить проект", callback_data="setup:reset"))
     edit(chat_id, home_text(d), kb)
     WIZ[chat_id]["stage"] = "home"

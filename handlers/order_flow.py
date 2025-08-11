@@ -11,9 +11,26 @@ from services.inventory import (
 )
 from services.validators import validate_text, validate_number
 from utils.tg import safe_delete, safe_edit_message
+from utils.colors import color_ru
+from services.orders import get_next_order_number, save_order
+import logging
 
 # Временные заказы (по chat_id)
 ORD: dict[int, dict] = {}
+
+
+@bot.message_handler(commands=["order"])
+def order_cmd(message: types.Message):
+    from services.roles import get_role
+    if get_role(message.chat.id) not in ("promo", "coord", "admin"):
+        return
+    s = get_settings()
+    if not s.get("configured"):
+        bot.send_message(message.chat.id, "Бот не настроен. Выполните /setup")
+        return
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("Начать", callback_data="order:start"))
+    bot.send_message(message.chat.id, "Оформление заказа", reply_markup=kb)
 
 def _admin_target():
     chat_id, thread_id = get_admin_bind()
@@ -39,59 +56,111 @@ def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
 
 @bot.callback_query_handler(func=lambda c: c.data == "order:start")
 def order_start(c: types.CallbackQuery):
+    from services.roles import get_role
+    if get_role(c.message.chat.id) not in ("promo", "coord", "admin"):
+        bot.answer_callback_query(c.id)
+        return
     s = get_settings()
     if not s.get("configured"):
         bot.answer_callback_query(c.id)
         bot.send_message(c.message.chat.id, "Бот не настроен. Нажмите /start и пройдите мастер.")
         return
     merch = s.get("merch", {})
-    kb = types.InlineKeyboardMarkup(row_width=2)
+    inv = get_merch_inv()
+    avail = []
     for mk, info in merch.items():
+        colors = inv.get(mk, {})
+        if any(any(q > 0 for q in cinfo.get("sizes", {}).values()) for cinfo in colors.values()):
+            avail.append((mk, info))
+    if not avail:
+        bot.edit_message_text("К сожалению, вариантов не осталось. Выберите другой параметр или начните заново.", c.message.chat.id, c.message.message_id)
+        return
+    if len(avail) == 1:
+        mk, info = avail[0]
+        ORD[c.message.chat.id] = {"merch": mk}
+        bot.edit_message_text(
+            f"Выбран автоматически: {html.escape(info.get('name_ru', mk))} (остальные варианты недоступны)",
+            c.message.chat.id,
+            c.message.message_id,
+        )
+        _prompt_color(c.message.chat.id, mk)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for mk, info in avail:
         kb.add(types.InlineKeyboardButton(info.get("name_ru", mk), callback_data=f"order:m:{mk}"))
     bot.edit_message_text("Выберите вид мерча:", c.message.chat.id, c.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:m:"))
 def order_choose_merch(c: types.CallbackQuery):
     mk = c.data.split(":")[2]
-    s = get_settings()
-    inv = get_merch_inv()
-    # показать только цвета, у которых есть доступные размеры (>0)
-    kb = types.InlineKeyboardMarkup(row_width=2)
-    added = False
-    for ck, info in s.get("merch", {}).get(mk, {}).get("colors", {}).items():
-        sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
-        if any(q > 0 for q in sizes.values()):
-            kb.add(types.InlineKeyboardButton(info.get("name_ru", ck), callback_data=f"order:c:{mk}:{ck}"))
-            added = True
-    if not added:
-        bot.answer_callback_query(c.id)
-        bot.send_message(c.message.chat.id, "К сожалению, нет доступных цветов/размеров. Обновите остатки.")
-        return
     ORD[c.message.chat.id] = {"merch": mk}
-    bot.edit_message_text("Выберите цвет:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.answer_callback_query(c.id)
+    _prompt_color(c.message.chat.id, mk)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:c:"))
 def order_choose_color(c: types.CallbackQuery):
     _, _, mk, ck = c.data.split(":")
-    inv = get_merch_inv()
-    sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
-    kb = types.InlineKeyboardMarkup(row_width=3)
-    for sz, q in sizes.items():
-        if q > 0:
-            kb.add(types.InlineKeyboardButton(f"{sz}", callback_data=f"order:s:{mk}:{ck}:{sz}"))
-    ORD[c.message.chat.id].update({"color": ck})
-    bot.edit_message_text("Выберите размер:", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    ORD[c.message.chat.id]["color"] = ck
+    bot.answer_callback_query(c.id)
+    _prompt_size(c.message.chat.id, mk, ck)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:s:"))
 def order_choose_size(c: types.CallbackQuery):
     _, _, mk, ck, sz = c.data.split(":")
-    ORD[c.message.chat.id].update({"size": sz})
-    # спросим: нужен текст и/или номер?
+    ORD[c.message.chat.id]["size"] = sz
+    bot.answer_callback_query(c.id)
+    _prompt_text_number(c.message.chat.id, mk, ck, sz)
+
+
+def _prompt_color(chat_id: int, mk: str):
+    s = get_settings()
+    inv = get_merch_inv()
+    avail = []
+    for ck, info in s.get("merch", {}).get(mk, {}).get("colors", {}).items():
+        sizes = inv.get(mk, {}).get(ck, {}).get("sizes", {})
+        if any(q > 0 for q in sizes.values()):
+            avail.append((ck, info))
+    if not avail:
+        bot.send_message(chat_id, "К сожалению, вариантов не осталось. Выберите другой параметр или начните заново.")
+        return
+    if len(avail) == 1:
+        ck, info = avail[0]
+        ORD[chat_id]["color"] = ck
+        bot.send_message(chat_id, f"Выбран автоматически: {html.escape(info.get('name_ru', color_ru(ck)))} (остальные варианты недоступны)")
+        _prompt_size(chat_id, mk, ck)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for ck, info in avail:
+        kb.add(types.InlineKeyboardButton(info.get("name_ru", color_ru(ck)), callback_data=f"order:c:{mk}:{ck}"))
+    bot.send_message(chat_id, "Выберите цвет:", reply_markup=kb)
+
+
+def _prompt_size(chat_id: int, mk: str, ck: str):
+    inv = get_merch_inv()
+    sizes = [(sz, q) for sz, q in inv.get(mk, {}).get(ck, {}).get("sizes", {}).items() if q > 0]
+    if not sizes:
+        bot.send_message(chat_id, "К сожалению, вариантов не осталось. Выберите другой параметр или начните заново.")
+        return
+    if len(sizes) == 1:
+        sz, _ = sizes[0]
+        ORD[chat_id]["size"] = sz
+        bot.send_message(chat_id, f"Выбран автоматически: {html.escape(sz)} (остальные варианты недоступны)")
+        _prompt_text_number(chat_id, mk, ck, sz)
+        return
+    kb = types.InlineKeyboardMarkup(row_width=3)
+    for sz, _ in sizes:
+        kb.add(types.InlineKeyboardButton(f"{sz}", callback_data=f"order:s:{mk}:{ck}:{sz}"))
+    bot.send_message(chat_id, "Выберите размер:", reply_markup=kb)
+
+
+def _prompt_text_number(chat_id: int, mk: str, ck: str, sz: str):
     kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("Текст", callback_data=f"order:text:{mk}:{ck}:{sz}"),
-           types.InlineKeyboardButton("Номер", callback_data=f"order:number:{mk}:{ck}:{sz}"))
+    kb.add(
+        types.InlineKeyboardButton("Текст", callback_data=f"order:text:{mk}:{ck}:{sz}"),
+        types.InlineKeyboardButton("Номер", callback_data=f"order:number:{mk}:{ck}:{sz}"),
+    )
     kb.add(types.InlineKeyboardButton("Без текста/номера", callback_data=f"order:skiptn:{mk}:{ck}:{sz}"))
-    bot.edit_message_text("Добавить надпись и/или номер?", c.message.chat.id, c.message.message_id, reply_markup=kb)
+    bot.send_message(chat_id, "Добавить надпись и/или номер?", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("order:text:"))
 def order_text_choose_color(c: types.CallbackQuery):
@@ -259,7 +328,7 @@ def _show_summary(chat_id: int):
     s = get_settings(); invm = get_merch_inv()
     d = ORD[chat_id]
     merch_name = s["merch"][d["merch"]]["name_ru"]
-    color_name = s["merch"][d["merch"]]["colors"][d["color"]]["name_ru"]
+    color_name = s["merch"][d["merch"]]["colors"][d["color"]].get("name_ru", color_ru(d["color"]))
     lines = [
         "<b>Информация о заказе:</b>",
         f"Мерч: {html.escape(merch_name)}",
@@ -289,10 +358,11 @@ def order_confirm_yes(c: types.CallbackQuery):
     d = ORD.get(chat_id, {})
     s = get_settings()
     merch_name = s["merch"][d["merch"]]["name_ru"]
-    color_name = s["merch"][d["merch"]]["colors"][d["color"]]["name_ru"]
+    color_name = s["merch"][d["merch"]]["colors"][d["color"]].get("name_ru", color_ru(d["color"]))
+    order_no = get_next_order_number()
 
     final_text = (
-        f"✉️ <b>Заказ</b>\n"
+        f"✉️ <b>Заказ №{order_no}</b>\n"
         "---------------------------\n"
         f"🛍 Мерч: {html.escape(merch_name)}\n"
         f"🎨 Цвет: {html.escape(color_name)}\n"
@@ -318,7 +388,13 @@ def order_confirm_yes(c: types.CallbackQuery):
 
     bot.edit_message_text(final_text, chat_id, c.message.message_id, parse_mode="HTML")
     _send_to_admin_or_warn(chat_id, final_text)
-
+    save_order({**d, "order_no": order_no})
+    logging.getLogger(__name__).info("Order %s confirmed", order_no)
+    bot.send_message(
+        chat_id,
+        f"✅ Заказ №{order_no} принят. Мерч: {merch_name}, Цвет: {color_name}, Размер: {d['size']}, Макеты: {d.get('templates','—')}.",
+    )
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("Сделать новый заказ", callback_data="order:start"))
-    bot.send_message(chat_id, "✅ Заказ оформлен!", reply_markup=kb)
+    bot.send_message(chat_id, "Новый заказ?", reply_markup=kb)
+    ORD.pop(chat_id, None)
