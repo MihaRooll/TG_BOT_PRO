@@ -83,6 +83,7 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Step 4: Inventory ---
     if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
+    if cmd == "inv_sizes_home":         INV.open_inventory_sizes(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
     if cmd == "inv_sz_qty":             INV.open_qty_spinner(chat_id, rest[0], rest[1], rest[2]); return
@@ -99,6 +100,22 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "inv_lt_save":            INV.save_letter_qty(chat_id, rest[0], rest[1]); return
     if cmd == "inv_lt_apply_all":       INV.apply_all_letters(chat_id, rest[0]); return
     if cmd == "inv_lt_all_set":         INV.set_all_letters(chat_id, rest[0], int(rest[1])); return
+    if cmd == "inv_numbers":            INV.open_inventory_numbers(chat_id); return
+    if cmd == "inv_numbers_digits":     INV.open_numbers_digits(chat_id, rest[0]); return
+    if cmd == "inv_nb_qty":             INV.open_number_qty_spinner(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_nb_adj":             INV.adjust_number_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_nb_set":             INV.set_number_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_nb_save":            INV.save_number_qty(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_nb_apply_all":       INV.apply_all_numbers(chat_id, rest[0]); return
+    if cmd == "inv_nb_all_set":         INV.set_all_numbers(chat_id, rest[0], int(rest[1])); return
+    if cmd == "inv_templates":          INV.open_inventory_templates(chat_id); return
+    if cmd == "inv_tmpl_nums":          INV.open_template_numbers(chat_id, rest[0]); return
+    if cmd == "inv_tmpl_qty":           INV.open_template_qty_spinner(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_tmpl_adj":           INV.adjust_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_tmpl_set":           INV.set_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "inv_tmpl_save":          INV.save_template_qty(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_tmpl_apply_all":     INV.apply_all_templates(chat_id, rest[0]); return
+    if cmd == "inv_tmpl_all_set":       INV.set_all_templates(chat_id, rest[0], int(rest[1])); return
 
     # --- Finish ---
     if cmd == "finish":                 _finish(chat_id); return
@@ -122,7 +139,9 @@ def _finish(chat_id: int):
     save_numbers_inv(tmp.get("_inv_numbers", {}))
     save_templates_inv(tmp.get("_inv_tmpls", {}))
 
-    edit(chat_id, "Готово! ☑ Бот настроен и готов к приёму заказов. Нажмите /start.", None)
+    edit(chat_id,
+         "✅ Готово!\nБот настроен и готов к приёму заказов. \n\nЧто дальше?\n• Нажмите /start, чтобы открыть главное меню.\n• Используйте «Сделать заказ» — процесс быстрый и пошаговый.\n• Настройки можно менять в любой момент — они сохраняются.",
+         None)
     WIZ.pop(chat_id, None)
 
 # ----------- удаляем пользовательские сообщения и обрабатываем ввод ----------
@@ -154,7 +173,13 @@ def _during_setup(m: types.Message):
         d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
         f_id = m.photo[-1].file_id
         col = d.setdefault("collages", [])
-        if len(col) < 10: col.append(f_id)
+        col.append(f_id)
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("Готово ☑", callback_data="setup:tmpl_collages_done"))
+        kb.add(types.InlineKeyboardButton("Пропустить", callback_data="setup:tmpl_collages_done"))
+        edit(chat_id,
+             f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nЗагружено коллажей: {len(col)}",
+             kb)
     # --- лимиты по шагам ---
     elif st == "limits_len" and text:
         try:

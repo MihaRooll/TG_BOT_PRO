@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit
+from utils.tg import color_name_ru
 
 def open_inventory_sizes(chat_id: int):
     WIZ[chat_id]["stage"] = "inv_sizes_home"
@@ -18,6 +19,7 @@ def open_colors(chat_id: int, mk: str):
     kb = types.InlineKeyboardMarkup(row_width=3)
     for ck, ci in colors.items():
         kb.add(types.InlineKeyboardButton(ci["name_ru"], callback_data=f"setup:inv_sizes_sizes:{mk}:{ck}"))
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:inv_sizes_home"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_sizes_home"))
     edit(chat_id, f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}</b> — выберите цвет.", kb)
 
@@ -30,8 +32,11 @@ def open_sizes(chat_id: int, mk: str, ck: str):
         qty = inv.get(sz, 0)
         kb.add(types.InlineKeyboardButton(f"{sz}: {qty}", callback_data=f"setup:inv_sz_qty:{mk}:{ck}:{sz}"))
     kb.add(types.InlineKeyboardButton("➕ Применить ко всем размерам", callback_data=f"setup:inv_sz_apply_all:{mk}:{ck}"))
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data=f"setup:inv_sizes_colors:{mk}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_sizes_colors:{mk}"))
-    edit(chat_id, f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}/{WIZ[chat_id]['data']['merch'][mk]['colors'][ck]['name_ru']}</b> — выберите размер или задайте число для всех.", kb)
+    edit(chat_id,
+         f"Остатки: <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}/{WIZ[chat_id]['data']['merch'][mk]['colors'][ck]['name_ru']}</b> — выберите размер или задайте число для всех.",
+         kb)
 
 def open_qty_spinner(chat_id: int, mk: str, ck: str, sz: str):
     WIZ[chat_id]["stage"] = f"inv_sz_qty:{mk}:{ck}:{sz}"
@@ -106,9 +111,9 @@ def open_inventory_letters(chat_id: int):
     pal = d.get("text_palette", [])
     kb = types.InlineKeyboardMarkup(row_width=2)
     for tc in pal:
-        kb.add(types.InlineKeyboardButton(tc, callback_data=f"setup:inv_letters_chars:{tc}"))
+        kb.add(types.InlineKeyboardButton(color_name_ru(tc), callback_data=f"setup:inv_letters_chars:{tc}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv"))
-    kb.add(types.InlineKeyboardButton("✅ Пропустить", callback_data="setup:finish"))
+    kb.add(types.InlineKeyboardButton("✅ Готово → Цифры", callback_data="setup:inv_numbers"))
     edit(chat_id, "Остатки букв — выберите <b>цвет текста</b>.", kb)
 
 def open_letters_chars(chat_id: int, tc: str):
@@ -121,7 +126,7 @@ def open_letters_chars(chat_id: int, tc: str):
         kb.add(types.InlineKeyboardButton(f"{ch}: {qty}", callback_data=f"setup:inv_lt_qty:{tc}:{ch}"))
     kb.add(types.InlineKeyboardButton("➕ Применить ко всем", callback_data=f"setup:inv_lt_apply_all:{tc}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_letters"))
-    edit(chat_id, f"Остатки букв: <b>{tc}</b> — выберите букву.", kb)
+    edit(chat_id, f"Остатки букв: <b>{color_name_ru(tc)}</b> — выберите букву.", kb)
 
 def open_letter_qty_spinner(chat_id: int, tc: str, ch: str):
     WIZ[chat_id]["stage"] = f"inv_lt_qty:{tc}:{ch}"
@@ -143,7 +148,7 @@ def open_letter_qty_spinner(chat_id: int, tc: str, ch: str):
     )
     kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_lt_save:{tc}:{ch}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к буквам", callback_data=f"setup:inv_letters_chars:{tc}"))
-    edit(chat_id, f"Введите количество для <b>{ch}</b> цвета <b>{tc}</b>:\nТекущее: <b>{cur}</b>", kb)
+    edit(chat_id, f"Введите количество для <b>{ch}</b> цвета <b>{color_name_ru(tc)}</b>:\nТекущее: <b>{cur}</b>", kb)
 
 def adjust_letter_qty(chat_id: int, tc: str, ch: str, delta: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_letters", {}).setdefault(tc, {}).setdefault("letters", {})
@@ -167,7 +172,7 @@ def apply_all_letters(chat_id: int, tc: str):
     for val in (0,1,2,5,10,15,20,25,30):
         kb.add(types.InlineKeyboardButton(str(val), callback_data=f"setup:inv_lt_all_set:{tc}:{val}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_letters_chars:{tc}"))
-    edit(chat_id, f"Применить одно число ко всем буквам <b>{tc}</b>.", kb)
+    edit(chat_id, f"Применить одно число ко всем буквам <b>{color_name_ru(tc)}</b>.", kb)
 
 def set_all_letters(chat_id: int, tc: str, val: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_letters", {}).setdefault(tc, {}).setdefault("letters", {})
@@ -175,3 +180,166 @@ def set_all_letters(chat_id: int, tc: str, val: int):
         if inv.get(ch, 0) == 0:
             inv[ch] = val
     open_letters_chars(chat_id, tc)
+
+
+# --------- numbers inventory ----------
+DIGITS = list("0123456789")
+
+def open_inventory_numbers(chat_id: int):
+    WIZ[chat_id]["stage"] = "inv_numbers_home"
+    d = WIZ[chat_id]["data"]
+    pal = d.get("text_palette", [])
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    for tc in pal:
+        kb.add(types.InlineKeyboardButton(color_name_ru(tc), callback_data=f"setup:inv_numbers_digits:{tc}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_letters"))
+    kb.add(types.InlineKeyboardButton("✅ Готово → Макеты", callback_data="setup:inv_templates"))
+    edit(chat_id, "Остатки цифр — выберите <b>цвет цифр</b>.", kb)
+
+def open_numbers_digits(chat_id: int, tc: str):
+    WIZ[chat_id]["stage"] = f"inv_nb_digits:{tc}"
+    inv = WIZ[chat_id]["data"].setdefault("_inv_numbers", {}).setdefault(tc, {}).setdefault("numbers", {})
+    kb = types.InlineKeyboardMarkup(row_width=6)
+    for dg in DIGITS:
+        qty = inv.get(dg, 0)
+        kb.add(types.InlineKeyboardButton(f"{dg}: {qty}", callback_data=f"setup:inv_nb_qty:{tc}:{dg}"))
+    kb.add(types.InlineKeyboardButton("➕ Применить ко всем", callback_data=f"setup:inv_nb_apply_all:{tc}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_numbers"))
+    edit(chat_id, f"Остатки цифр: <b>{color_name_ru(tc)}</b> — выберите цифру.", kb)
+
+def open_number_qty_spinner(chat_id: int, tc: str, dg: str):
+    WIZ[chat_id]["stage"] = f"inv_nb_qty:{tc}:{dg}"
+    inv = WIZ[chat_id]["data"].setdefault("_inv_numbers", {}).setdefault(tc, {}).setdefault("numbers", {})
+    cur = inv.get(dg, 0)
+    kb = types.InlineKeyboardMarkup(row_width=5)
+    kb.add(
+        types.InlineKeyboardButton("−10", callback_data=f"setup:inv_nb_adj:{tc}:{dg}:-10"),
+        types.InlineKeyboardButton("−1",  callback_data=f"setup:inv_nb_adj:{tc}:{dg}:-1"),
+        types.InlineKeyboardButton("+1",  callback_data=f"setup:inv_nb_adj:{tc}:{dg}:1"),
+        types.InlineKeyboardButton("+10", callback_data=f"setup:inv_nb_adj:{tc}:{dg}:10"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("0", callback_data=f"setup:inv_nb_set:{tc}:{dg}:0"),
+        types.InlineKeyboardButton("1", callback_data=f"setup:inv_nb_set:{tc}:{dg}:1"),
+        types.InlineKeyboardButton("2", callback_data=f"setup:inv_nb_set:{tc}:{dg}:2"),
+        types.InlineKeyboardButton("5", callback_data=f"setup:inv_nb_set:{tc}:{dg}:5"),
+        types.InlineKeyboardButton("10", callback_data=f"setup:inv_nb_set:{tc}:{dg}:10"),
+    )
+    kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_nb_save:{tc}:{dg}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад к цифрам", callback_data=f"setup:inv_numbers_digits:{tc}"))
+    edit(chat_id, f"Введите количество для цифры <b>{dg}</b> цвета <b>{color_name_ru(tc)}</b>:\nТекущее: <b>{cur}</b>", kb)
+
+def adjust_number_qty(chat_id: int, tc: str, dg: str, delta: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_numbers", {}).setdefault(tc, {}).setdefault("numbers", {})
+    cur = inv.get(dg, 0) + delta
+    if cur < 0:
+        cur = 0
+    inv[dg] = cur
+    open_number_qty_spinner(chat_id, tc, dg)
+
+def set_number_qty(chat_id: int, tc: str, dg: str, val: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_numbers", {}).setdefault(tc, {}).setdefault("numbers", {})
+    inv[dg] = max(0, val)
+    open_number_qty_spinner(chat_id, tc, dg)
+
+def save_number_qty(chat_id: int, tc: str, dg: str):
+    open_numbers_digits(chat_id, tc)
+
+def apply_all_numbers(chat_id: int, tc: str):
+    WIZ[chat_id]["stage"] = f"inv_nb_apply_all:{tc}"
+    kb = types.InlineKeyboardMarkup(row_width=5)
+    for val in (0,1,2,5,10,15,20,25,30):
+        kb.add(types.InlineKeyboardButton(str(val), callback_data=f"setup:inv_nb_all_set:{tc}:{val}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_numbers_digits:{tc}"))
+    edit(chat_id, f"Применить одно число ко всем цифрам <b>{color_name_ru(tc)}</b>.", kb)
+
+def set_all_numbers(chat_id: int, tc: str, val: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_numbers", {}).setdefault(tc, {}).setdefault("numbers", {})
+    for dg in DIGITS:
+        if inv.get(dg, 0) == 0:
+            inv[dg] = val
+    open_numbers_digits(chat_id, tc)
+
+
+# --------- templates inventory ----------
+def open_inventory_templates(chat_id: int):
+    WIZ[chat_id]["stage"] = "inv_tmpls_home"
+    d = WIZ[chat_id]["data"]
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    for mk, tinfo in d.get("templates", {}).items():
+        if tinfo.get("templates"):
+            name = d.get("merch", {}).get(mk, {}).get("name_ru", mk)
+            kb.add(types.InlineKeyboardButton(name, callback_data=f"setup:inv_tmpl_nums:{mk}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_numbers"))
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:finish"))
+    edit(chat_id, "Остатки макетов — выберите <b>вид мерча</b>.", kb)
+
+def open_template_numbers(chat_id: int, mk: str):
+    WIZ[chat_id]["stage"] = f"inv_tmpl_nums:{mk}"
+    tpls = WIZ[chat_id]["data"].get("templates", {}).get(mk, {}).get("templates", {})
+    inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
+    nums_sorted = sorted(tpls.keys(), key=lambda x: (len(x), x))
+    kb = types.InlineKeyboardMarkup(row_width=4)
+    for num in nums_sorted:
+        qty = inv.get(num, {}).get("qty", 0)
+        kb.add(types.InlineKeyboardButton(f"{num}: {qty}", callback_data=f"setup:inv_tmpl_qty:{mk}:{num}"))
+    kb.add(types.InlineKeyboardButton("➕ Применить ко всем", callback_data=f"setup:inv_tmpl_apply_all:{mk}"))
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:finish"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_templates"))
+    edit(chat_id,
+         f"Остатки макетов — выберите номера макетов ({WIZ[chat_id]['data']['merch'][mk]['name_ru']}).",
+         kb)
+
+def open_template_qty_spinner(chat_id: int, mk: str, num: str):
+    WIZ[chat_id]["stage"] = f"inv_tmpl_qty:{mk}:{num}"
+    inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
+    cur = inv.setdefault(num, {}).get("qty", 0)
+    kb = types.InlineKeyboardMarkup(row_width=5)
+    kb.add(
+        types.InlineKeyboardButton("−10", callback_data=f"setup:inv_tmpl_adj:{mk}:{num}:-10"),
+        types.InlineKeyboardButton("−1",  callback_data=f"setup:inv_tmpl_adj:{mk}:{num}:-1"),
+        types.InlineKeyboardButton("+1",  callback_data=f"setup:inv_tmpl_adj:{mk}:{num}:1"),
+        types.InlineKeyboardButton("+10", callback_data=f"setup:inv_tmpl_adj:{mk}:{num}:10"),
+    )
+    kb.add(
+        types.InlineKeyboardButton("0", callback_data=f"setup:inv_tmpl_set:{mk}:{num}:0"),
+        types.InlineKeyboardButton("1", callback_data=f"setup:inv_tmpl_set:{mk}:{num}:1"),
+        types.InlineKeyboardButton("2", callback_data=f"setup:inv_tmpl_set:{mk}:{num}:2"),
+        types.InlineKeyboardButton("5", callback_data=f"setup:inv_tmpl_set:{mk}:{num}:5"),
+        types.InlineKeyboardButton("10", callback_data=f"setup:inv_tmpl_set:{mk}:{num}:10"),
+    )
+    kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_tmpl_save:{mk}:{num}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад к номерам", callback_data=f"setup:inv_tmpl_nums:{mk}"))
+    edit(chat_id, f"Введите количество макетов <b>{num}</b> для {WIZ[chat_id]['data']['merch'][mk]['name_ru']}:\nТекущее: <b>{cur}</b>", kb)
+
+def adjust_template_qty(chat_id: int, mk: str, num: str, delta: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
+    cur = inv.setdefault(num, {}).get("qty", 0) + delta
+    if cur < 0:
+        cur = 0
+    inv[num]["qty"] = cur
+    open_template_qty_spinner(chat_id, mk, num)
+
+def set_template_qty(chat_id: int, mk: str, num: str, val: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
+    inv.setdefault(num, {})["qty"] = max(0, val)
+    open_template_qty_spinner(chat_id, mk, num)
+
+def save_template_qty(chat_id: int, mk: str, num: str):
+    open_template_numbers(chat_id, mk)
+
+def apply_all_templates(chat_id: int, mk: str):
+    WIZ[chat_id]["stage"] = f"inv_tmpl_apply_all:{mk}"
+    kb = types.InlineKeyboardMarkup(row_width=5)
+    for val in (0,1,2,5,10,15,20,25,30):
+        kb.add(types.InlineKeyboardButton(str(val), callback_data=f"setup:inv_tmpl_all_set:{mk}:{val}"))
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_tmpl_nums:{mk}"))
+    edit(chat_id, f"Применить одно число ко всем макетам <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}</b>.", kb)
+
+def set_all_templates(chat_id: int, mk: str, val: int):
+    inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
+    nums = WIZ[chat_id]["data"].get("templates", {}).get(mk, {}).get("templates", {})
+    for num in nums.keys():
+        if inv.get(num, {}).get("qty", 0) == 0:
+            inv.setdefault(num, {})["qty"] = val
+    open_template_numbers(chat_id, mk)
