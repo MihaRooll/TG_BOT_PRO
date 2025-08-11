@@ -14,9 +14,23 @@ from . import A7_TemplatesColors  as TCOL
 from . import A8_TemplatesCollages as TCOLL
 from . import A9_InventorySizes   as INV
 
+
+@bot.message_handler(commands=["setup"])
+def setup_cmd(message: types.Message):
+    from services.roles import get_role
+    if get_role(message.chat.id) not in ("coord", "admin"):
+        return
+    chat_id = message.chat.id
+    ensure(chat_id, message.message_id)
+    O.render_home(chat_id)
+
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
+    from services.roles import get_role
     chat_id = c.message.chat.id
+    if get_role(chat_id) not in ("coord", "admin"):
+        bot.answer_callback_query(c.id)
+        return
     ensure(chat_id, c.message.message_id)
     if anchor(chat_id) != c.message.message_id:
         bot.answer_callback_query(c.id)
@@ -83,6 +97,7 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Step 4: Inventory ---
     if cmd == "inv":                    INV.open_inventory_sizes(chat_id); return
+    if cmd == "inv_sizes_home":         INV.open_inventory_sizes(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
     if cmd == "inv_sz_qty":             INV.open_qty_spinner(chat_id, rest[0], rest[1], rest[2]); return
@@ -102,6 +117,10 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Finish ---
     if cmd == "finish":                 _finish(chat_id); return
+    if cmd == "reset":
+        bot.send_message(chat_id, "Вы уверены, что хотите сбросить все настройки проекта? Введите Да для подтверждения. Любой другой ответ — отмена.")
+        WIZ[chat_id]["stage"] = "reset_wait"
+        return
 
 def _finish(chat_id: int):
     tmp = WIZ[chat_id]["data"]
@@ -114,6 +133,7 @@ def _finish(chat_id: int):
     settings["text_palette"] = tmp.get("text_palette", ["white","black"])
     settings["text_colors"]  = tmp.get("text_colors", {})
     settings["templates"]    = tmp.get("templates", {})
+    settings["max_layouts_per_order"] = tmp.get("max_layouts_per_order", 1)
     save_settings(settings)
 
     from services.inventory import save_merch_inv, save_letters_inv, save_numbers_inv, save_templates_inv
@@ -144,6 +164,14 @@ def _during_setup(m: types.Message):
         from .A1_Merch import handle_custom_color; mk = st.split(":")[1]; handle_custom_color(chat_id, mk, text)
     elif st.startswith("sizes_add:") and text:
         from .A1_Merch import handle_custom_sizes; mk = st.split(":")[1]; handle_custom_sizes(chat_id, mk, text)
+    elif st == "reset_wait":
+        if text.lower() == "да":
+            from services.settings import reset_project
+            reset_project()
+            bot.send_message(chat_id, "Сброс выполнен. Настройки проекта возвращены к значениям по умолчанию.")
+        else:
+            bot.send_message(chat_id, "Сброс отменён.")
+        WIZ.pop(chat_id, None)
     elif st == "pal_add" and text:
         from .A4_TextPalette import handle_custom_color; handle_custom_color(chat_id, text)
     elif st == "tmpl_nums_enter" and text:
