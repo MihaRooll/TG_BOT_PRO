@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from .core import WIZ, edit, slugify, merch_tree
+from utils.tg import color_key_from_ru, register_color_name
 
 DEFAULT_MERCH  = [("tshirt","Футболки"),("shopper","Шопперы"),("mug","Кружки")]
 DEFAULT_COLORS = [("white","Белый"),("black","Чёрный"),("red","Красный"),("blue","Синий"),("green","Зелёный"),("brown","Коричневый")]
@@ -84,8 +85,11 @@ def ask_custom_color(chat_id: int, mk: str):
 def handle_custom_color(chat_id: int, mk: str, text: str):
     name = text.strip()
     colors = WIZ[chat_id]["data"]["merch"][mk].setdefault("colors", {})
-    key = slugify(name, used=list(colors.keys()))
+    used = list(colors.keys())
+    key = color_key_from_ru(name, used)
     colors[key] = {"name_ru": name}
+    WIZ[chat_id]["data"].setdefault("color_names", {})[key] = name
+    register_color_name(key, name)
     render_colors(chat_id, mk)
 
 def render_sizes(chat_id: int, mk: str):
