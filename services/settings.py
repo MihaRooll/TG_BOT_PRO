@@ -5,6 +5,8 @@ from repositories.files import load_json, save_json
 SETTINGS_FILE = "settings.json"
 ADMIN_BIND_FILE = "admin_chat.json"
 
+SUPERADMINS = [445075408]
+
 def get_settings() -> Dict[str, Any]:
     data = load_json(SETTINGS_FILE)
     if not data:
@@ -20,8 +22,20 @@ def get_settings() -> Dict[str, Any]:
             },
             "merch": {},           # {merch_key: {name_ru, colors:{color_key:{name_ru}}, sizes:[...] } }
             "text_colors": {},     # {merch_key:{color_key:[text_color,...]}, "palette":[...]}
-            "templates": {}        # {merch_key:{templates:{num:{allowed_colors:[...] }}, collages:[file_id,...]}}
+            "templates": {},        # {merch_key:{templates:{num:{allowed_colors:[...] }}, collages:[file_id,...]}}
+            "color_names": {},
+            "layouts": {
+                "max_per_order": 3,
+                "selected_indicator": "🟩"
+            },
+            "admins": []
         }
+    else:
+        data.setdefault("color_names", {})
+        data.setdefault("layouts", {})
+        data.setdefault("admins", [])
+        data["layouts"].setdefault("max_per_order", 3)
+        data["layouts"].setdefault("selected_indicator", "🟩")
     return data
 
 def save_settings(data: Dict[str, Any]) -> None:
@@ -33,3 +47,31 @@ def get_admin_bind() -> Tuple[Any, Any]:
 
 def save_admin_bind(chat_id, thread_id=None) -> None:
     save_json(ADMIN_BIND_FILE, {"chat_id": chat_id, "thread_id": thread_id})
+
+
+def get_admins() -> List[int]:
+    return get_settings().get("admins", [])
+
+
+def add_admin(user_id: int) -> None:
+    data = get_settings()
+    admins = data.setdefault("admins", [])
+    if user_id not in admins:
+        admins.append(user_id)
+        save_settings(data)
+
+
+def del_admin(user_id: int) -> None:
+    data = get_settings()
+    admins = data.setdefault("admins", [])
+    if user_id in admins:
+        admins.remove(user_id)
+        save_settings(data)
+
+
+def is_superadmin(user_id: int) -> bool:
+    return user_id in SUPERADMINS
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in SUPERADMINS or user_id in get_admins()
