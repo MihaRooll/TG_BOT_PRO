@@ -15,6 +15,8 @@ def render_prompt(chat_id: int):
     d = WIZ[chat_id]["data"]["templates"][mk]["templates"]
     existing = ", ".join(sorted(d.keys())) or "—"
     kb = types.InlineKeyboardMarkup()
+    for tid in sorted(d.keys()):
+        kb.add(types.InlineKeyboardButton(f"🗑 {tid}", callback_data=f"setup:tmpl_del:{tid}"))
     kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:tmpl_num_done"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
     edit(chat_id,
@@ -40,3 +42,11 @@ def handle_input(chat_id: int, text: str):
 def done(chat_id: int):
     from .A7_TemplatesColors import render_for_next_template
     render_for_next_template(chat_id)
+
+
+def delete_template(chat_id: int, tid: str) -> None:
+    mk = WIZ[chat_id]["data"].get("_tmpl_current_mk")
+    if not mk:
+        return
+    WIZ[chat_id]["data"].get("templates", {}).get(mk, {}).get("templates", {}).pop(tid, None)
+    render_prompt(chat_id)

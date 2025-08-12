@@ -4,16 +4,25 @@ The previous implementation wrote directly to the destination path which
 could lead to partially written files if the process crashed mid-write. In
 addition, JSON parsing errors were silently swallowed which made diagnosing
 corrupted files difficult.  This module now writes files atomically and
-logs any I/O or JSON errors to aid debugging and improve reliability.
+logs any I/O or JSON errors to aid debugging and improve reliability. It
+also caches loaded JSON data in memory to minimise disk access on
+subsequent reads.
 """
 
 import json
 import logging
 import os
 import tempfile
+import threading
 from typing import Any, Dict
 
 import config
+
+# In-memory cache for JSON files to minimise disk access.  A single
+# reentrant lock guards both cache lookups and file writes, ensuring that
+# concurrent threads do not read stale data or step on each other's writes.
+_CACHE: Dict[str, Dict[str, Any]] = {}
+_LOCK = threading.RLock()
 
 log = logging.getLogger(__name__)
 
@@ -37,15 +46,24 @@ def load_json(filename: str) -> Dict[str, Any]:
     """
 
     path = _path(filename)
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read().strip()
-            return json.loads(text) if text else {}
-    except (OSError, json.JSONDecodeError) as err:
-        log.warning("Failed to load JSON from %s: %s", path, err)
-        return {}
+    with _LOCK:
+        if path in _CACHE:
+            # Return a copy so callers cannot accidentally mutate the cache
+            return dict(_CACHE[path])
+
+        if not os.path.exists(path):
+            _CACHE[path] = {}
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read().strip()
+                data = json.loads(text) if text else {}
+        except (OSError, json.JSONDecodeError) as err:
+            log.warning("Failed to load JSON from %s: %s", path, err)
+            data = {}
+
+        _CACHE[path] = data
+        return dict(data)
 
 def save_json(filename: str, data: Dict[str, Any]) -> None:
     """Persist *data* to *filename* atomically.
@@ -65,6 +83,9 @@ def save_json(filename: str, data: Dict[str, Any]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
             json.dump(data, tmp_file, ensure_ascii=False, indent=2)
         os.replace(tmp_path, path)
+        with _LOCK:
+            # Store a copy to avoid external mutation of the cached object
+            _CACHE[path] = dict(data)
     except OSError as err:
         log.warning("Failed to write JSON to %s: %s", path, err)
         raise
