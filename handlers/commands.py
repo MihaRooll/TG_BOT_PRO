@@ -8,6 +8,9 @@ from services.settings import (
     del_admin,
     get_admins,
     SUPERADMINS,
+    add_coordinator,
+    del_coordinator,
+    get_coordinators,
 )
 
 
@@ -58,6 +61,10 @@ def cmd_settings(message: types.Message):
 
 @bot.message_handler(commands=["admin"])
 def cmd_admin(message: types.Message):
+    if not get_admins():
+        add_admin(message.from_user.id)
+        bot.reply_to(message, "✅ Вы назначены главным администратором")
+        return
     if not _require_admin(message):
         return
     bot.send_message(message.chat.id, "Админка в разработке.")
@@ -65,8 +72,7 @@ def cmd_admin(message: types.Message):
 
 @bot.message_handler(commands=["admin_add"])
 def cmd_admin_add(message: types.Message):
-    if not is_superadmin(message.from_user.id):
-        bot.reply_to(message, "❌ Недостаточно прав")
+    if not _require_admin(message):
         return
     uid = _extract_uid(message)
     if uid is None:
@@ -78,8 +84,7 @@ def cmd_admin_add(message: types.Message):
 
 @bot.message_handler(commands=["admin_del"])
 def cmd_admin_del(message: types.Message):
-    if not is_superadmin(message.from_user.id):
-        bot.reply_to(message, "❌ Недостаточно прав")
+    if not _require_admin(message):
         return
     uid = _extract_uid(message)
     if uid is None:
@@ -91,12 +96,43 @@ def cmd_admin_del(message: types.Message):
 
 @bot.message_handler(commands=["admin_list"])
 def cmd_admin_list(message: types.Message):
-    if not is_superadmin(message.from_user.id):
-        bot.reply_to(message, "❌ Недостаточно прав")
+    if not _require_admin(message):
         return
     admins = ", ".join(map(str, get_admins())) or "—"
-    supers = ", ".join(map(str, SUPERADMINS))
+    supers = ", ".join(map(str, SUPERADMINS)) or "—"
     bot.reply_to(message, f"SUPERADMINS: {supers}\nADMINS: {admins}")
+
+
+@bot.message_handler(commands=["coord_add"])
+def cmd_coord_add(message: types.Message):
+    if not _require_admin(message):
+        return
+    uid = _extract_uid(message)
+    if uid is None:
+        bot.reply_to(message, "Укажите user_id")
+        return
+    add_coordinator(uid)
+    bot.reply_to(message, f"✅ Пользователь {uid} добавлен в координаторы")
+
+
+@bot.message_handler(commands=["coord_del"])
+def cmd_coord_del(message: types.Message):
+    if not _require_admin(message):
+        return
+    uid = _extract_uid(message)
+    if uid is None:
+        bot.reply_to(message, "Укажите user_id")
+        return
+    del_coordinator(uid)
+    bot.reply_to(message, f"✅ Пользователь {uid} удалён из координаторов")
+
+
+@bot.message_handler(commands=["coord_list"])
+def cmd_coord_list(message: types.Message):
+    if not _require_admin(message):
+        return
+    coords = ", ".join(map(str, get_coordinators())) or "—"
+    bot.reply_to(message, f"Координаторы: {coords}")
 
 
 @bot.message_handler(func=lambda m: m.text and m.text.startswith("/"))
