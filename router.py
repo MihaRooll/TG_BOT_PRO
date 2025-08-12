@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # Регистрация всех хэндлеров (импорты регистрируют декораторы)
-from handlers import start, bind, order_flow, errors  # noqa: F401
+# Командные хендлеры импортируем раньше остальных, чтобы команды имели приоритет
+from handlers import commands, start, bind, order_flow, settings, errors, debug  # noqa: F401
 from bot import bot  # если уже есть — оставьте как было            # noqa: F401
 from modules.router import register_module_routes
 
