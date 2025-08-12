@@ -20,8 +20,18 @@ def get_settings() -> Dict[str, Any]:
             },
             "merch": {},           # {merch_key: {name_ru, colors:{color_key:{name_ru}}, sizes:[...] } }
             "text_colors": {},     # {merch_key:{color_key:[text_color,...]}, "palette":[...]}
-            "templates": {}        # {merch_key:{templates:{num:{allowed_colors:[...] }}, collages:[file_id,...]}}
+            "templates": {},        # {merch_key:{templates:{num:{allowed_colors:[...] }}, collages:[file_id,...]}}
+            "color_names": {},
+            "layouts": {
+                "max_per_order": 3,
+                "selected_indicator": "🟩"
+            }
         }
+    else:
+        data.setdefault("color_names", {})
+        data.setdefault("layouts", {})
+        data["layouts"].setdefault("max_per_order", 3)
+        data["layouts"].setdefault("selected_indicator", "🟩")
     return data
 
 def save_settings(data: Dict[str, Any]) -> None:
