@@ -3,11 +3,13 @@ import time, logging
 from requests.exceptions import ReadTimeout, ConnectionError
 from bot import bot
 from router import register_routes
+from services.settings import refresh_promo_cache
 
 log = logging.getLogger("runner")
 
 def run_bot() -> None:
     register_routes()
+    refresh_promo_cache(bot)
     while True:
         try:
             bot.infinity_polling(

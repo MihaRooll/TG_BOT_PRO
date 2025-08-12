@@ -7,6 +7,12 @@ from services.settings import (
     add_admin,
     del_admin,
     get_admins,
+    add_coordinator,
+    del_coordinator,
+    get_coordinators,
+    refresh_promo_cache,
+    get_roles,
+    is_authorized,
     SUPERADMINS,
 )
 
@@ -99,6 +105,56 @@ def cmd_admin_list(message: types.Message):
     bot.reply_to(message, f"SUPERADMINS: {supers}\nADMINS: {admins}")
 
 
+@bot.message_handler(commands=["coord_add"])
+def cmd_coord_add(message: types.Message):
+    if not _require_admin(message):
+        return
+    uid = _extract_uid(message)
+    if uid is None:
+        bot.reply_to(message, "Укажите user_id")
+        return
+    add_coordinator(uid)
+    bot.reply_to(message, f"✅ Пользователь {uid} добавлен в COORDINATORS")
+
+
+@bot.message_handler(commands=["coord_del"])
+def cmd_coord_del(message: types.Message):
+    if not _require_admin(message):
+        return
+    uid = _extract_uid(message)
+    if uid is None:
+        bot.reply_to(message, "Укажите user_id")
+        return
+    del_coordinator(uid)
+    bot.reply_to(message, f"✅ Пользователь {uid} удалён из COORDINATORS")
+
+
+@bot.message_handler(commands=["coord_list"])
+def cmd_coord_list(message: types.Message):
+    if not _require_admin(message):
+        return
+    coords = ", ".join(map(str, get_coordinators())) or "—"
+    bot.reply_to(message, f"COORDINATORS: {coords}")
+
+
+@bot.message_handler(commands=["promo_refresh"])
+def cmd_promo_refresh(message: types.Message):
+    if not _require_admin(message):
+        return
+    refresh_promo_cache(bot)
+    bot.reply_to(message, "🔄 PROMO обновлён")
+
+
+@bot.message_handler(commands=["whoami"])
+def cmd_whoami(message: types.Message):
+    uid = message.from_user.id
+    roles = get_roles(uid)
+    gated = not is_authorized(uid)
+    bot.reply_to(message, f"{{'id': {uid}, 'roles': {roles}, 'gated': {gated}}}")
+
+
 @bot.message_handler(func=lambda m: m.text and m.text.startswith("/"))
 def cmd_unknown(message: types.Message):
+    if not is_authorized(message.from_user.id):
+        return
     bot.reply_to(message, "❔ Команда недоступна на этом проекте")
