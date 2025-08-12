@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # Регистрация всех хэндлеров (импорты регистрируют декораторы)
+# gate должен импортироваться первым, чтобы отсеивать неавторизованных
+from handlers import gate  # noqa: F401
 from handlers import start, bind, order_flow, settings, errors, debug, commands  # noqa: F401
 from bot import bot  # если уже есть — оставьте как было            # noqa: F401
 from modules.router import register_module_routes

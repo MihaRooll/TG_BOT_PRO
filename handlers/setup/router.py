@@ -44,11 +44,34 @@ def render_templates_home(chat_id: int) -> None:
     kb.add(types.InlineKeyboardButton("Настроить соответствие цветов", callback_data="setup:tmpl_map"))
     kb.add(types.InlineKeyboardButton("Настроить количество", callback_data="setup:tmpl_qty"))
     kb.add(types.InlineKeyboardButton("Загрузить изображения с макетами", callback_data="setup:tmpl_collages"))
+    kb.add(types.InlineKeyboardButton("Структура доступности", callback_data="setup:tmpl_structure"))
     kb.add(types.InlineKeyboardButton("Ограничение макетов на заказ", callback_data="setup:tmpl_limit"))
     kb.add(types.InlineKeyboardButton("Смайлик выбранного макета", callback_data="setup:tmpl_indicator"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
     edit(chat_id, "🧩 Шаг 3/4 — Макеты\n" + "\n".join(lines), kb)
     WIZ[chat_id]["stage"] = "tmpls_home"
+
+
+def render_availability_structure(chat_id: int) -> None:
+    data = WIZ[chat_id]["data"]
+    merch = data.get("merch", {})
+    templates = data.get("templates", {})
+    lines = ["Мерч"]
+    for mk, mi in merch.items():
+        lines.append(f"  • {mi['name_ru']}")
+        colors = mi.get("colors", {})
+        tmpl_for_merch = templates.get(mk, {}).get("templates", {})
+        for ck, ci in colors.items():
+            layouts = [
+                num for num, info in tmpl_for_merch.items()
+                if ck in info.get('allowed_colors', [])
+            ]
+            layout_str = ", ".join(sorted(layouts, key=str)) if layouts else "—"
+            lines.append(f"    — {ci['name_ru']}  — макеты: {layout_str}")
+    kb = types.InlineKeyboardMarkup()
+    kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
+    edit(chat_id, "<pre>" + "\n".join(lines) + "</pre>", kb)
+    WIZ[chat_id]["stage"] = "tmpls_structure"
 
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
 def setup_router(c: types.CallbackQuery):
@@ -122,6 +145,7 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "tmpl_qty":              INV.open_inventory_templates(chat_id); return
     if cmd == "tmpl_collages":         TCOLL.ask_collages_or_next(chat_id); return
     if cmd == "tmpl_collages_done":    render_templates_home(chat_id); return
+    if cmd == "tmpl_structure":        render_availability_structure(chat_id); return
     if cmd == "tmpl_limit":
         cur = WIZ[chat_id]["data"].setdefault("layouts", get_settings().get("layouts", {})).get("max_per_order", 3)
         kb = types.InlineKeyboardMarkup()
