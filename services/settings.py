@@ -5,7 +5,7 @@ from repositories.files import load_json, save_json
 SETTINGS_FILE = "settings.json"
 ADMIN_BIND_FILE = "admin_chat.json"
 
-SUPERADMINS = [445075408]
+SUPERADMINS: List[int] = []
 
 def get_settings() -> Dict[str, Any]:
     data = load_json(SETTINGS_FILE)
@@ -28,12 +28,14 @@ def get_settings() -> Dict[str, Any]:
                 "max_per_order": 3,
                 "selected_indicator": "🟩"
             },
-            "admins": []
+            "admins": [],
+            "coordinators": []
         }
     else:
         data.setdefault("color_names", {})
         data.setdefault("layouts", {})
         data.setdefault("admins", [])
+        data.setdefault("coordinators", [])
         data["layouts"].setdefault("max_per_order", 3)
         data["layouts"].setdefault("selected_indicator", "🟩")
     return data
@@ -75,3 +77,23 @@ def is_superadmin(user_id: int) -> bool:
 
 def is_admin(user_id: int) -> bool:
     return user_id in SUPERADMINS or user_id in get_admins()
+
+
+def get_coordinators() -> List[int]:
+    return get_settings().get("coordinators", [])
+
+
+def add_coordinator(user_id: int) -> None:
+    data = get_settings()
+    coords = data.setdefault("coordinators", [])
+    if user_id not in coords:
+        coords.append(user_id)
+        save_settings(data)
+
+
+def del_coordinator(user_id: int) -> None:
+    data = get_settings()
+    coords = data.setdefault("coordinators", [])
+    if user_id in coords:
+        coords.remove(user_id)
+        save_settings(data)
