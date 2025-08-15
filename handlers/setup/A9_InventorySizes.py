@@ -305,6 +305,7 @@ def open_inventory_templates(chat_id: int):
     WIZ[chat_id]["stage"] = "inv_tmpls_home"
     d = WIZ[chat_id]["data"]
     kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton("Глобально (все мерчи)", callback_data="setup:inv_tmpl_nums:__all"))
     for mk, tinfo in d.get("templates", {}).items():
         if tinfo.get("templates"):
             name = d.get("merch", {}).get(mk, {}).get("name_ru", mk)
@@ -314,6 +315,15 @@ def open_inventory_templates(chat_id: int):
     edit(chat_id, "Остатки макетов — выберите <b>вид мерча</b>.", kb)
 
 def open_template_numbers(chat_id: int, mk: str):
+    if mk == "__all":
+        mks = [k for k, t in WIZ[chat_id]["data"].get("templates", {}).items() if t.get("templates")]
+        if not mks:
+            from .router import render_templates_home
+            render_templates_home(chat_id)
+            return
+        WIZ[chat_id]["data"]["_inv_tmpl_scope"] = mks
+        open_template_numbers(chat_id, mks[0])
+        return
     WIZ[chat_id]["stage"] = f"inv_tmpl_nums:{mk}"
     tpls = WIZ[chat_id]["data"].get("templates", {}).get(mk, {}).get("templates", {})
     inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
@@ -323,7 +333,9 @@ def open_template_numbers(chat_id: int, mk: str):
         qty = inv.get(num, {}).get("qty", 0)
         kb.add(types.InlineKeyboardButton(f"{num}: {qty}", callback_data=f"setup:inv_tmpl_qty:{mk}:{num}"))
     kb.add(types.InlineKeyboardButton("Задать число для всех", callback_data=f"setup:inv_tmpl_apply_all:{mk}"))
-    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:inv"))
+    scope = WIZ[chat_id]["data"].get("_inv_tmpl_scope")
+    done_cb = "setup:inv_tmpl_next" if scope else "setup:inv"
+    kb.add(types.InlineKeyboardButton("✅ Готово", callback_data=done_cb))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_templates"))
     edit(chat_id,
          f"Остатки макетов — выберите номера макетов ({WIZ[chat_id]['data']['merch'][mk]['name_ru']}).",
