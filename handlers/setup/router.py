@@ -2,6 +2,7 @@
 from telebot import types
 from bot import bot
 from .core import WIZ, ensure, edit, anchor
+import regex as re
 
 from . import A0_Overview as O
 from . import A1_Merch    as M
@@ -47,7 +48,7 @@ def render_templates_home(chat_id: int) -> None:
     kb.add(types.InlineKeyboardButton("Ограничение макетов на заказ", callback_data="setup:tmpl_limit"))
     kb.add(types.InlineKeyboardButton("Смайлик выбранного макета", callback_data="setup:tmpl_indicator"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:home"))
-    edit(chat_id, "🧩 Шаг 3/4 — Макеты\n" + "\n".join(lines), kb)
+    edit(chat_id, "🧩 Шаг 3/4 — Макеты\n<pre>" + "\n".join(lines) + "</pre>", kb)
     WIZ[chat_id]["stage"] = "tmpls_home"
 
 @bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("setup:"))
@@ -119,9 +120,13 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "tmpl_map":              TCOL.render_for_next_template(chat_id); return
     if cmd == "tmpl_color_toggle":     TCOL.toggle_color(chat_id, rest[0], rest[1], rest[2]); return
     if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
+    if cmd == "tmpl_color_add":        TCOL.ask_add_many(chat_id, rest[0], rest[1]); return
+    if cmd == "tmpl_color_clear":      TCOL.clear_all(chat_id, rest[0], rest[1]); return
     if cmd == "tmpl_qty":              INV.open_inventory_templates(chat_id); return
     if cmd == "tmpl_collages":         TCOLL.ask_collages_or_next(chat_id); return
     if cmd == "tmpl_collages_done":    render_templates_home(chat_id); return
+    if cmd == "tmpl_collages_reset_all": TCOLL.reset_all(chat_id); return
+    if cmd == "tmpl_collages_reset_one": TCOLL.reset_one(chat_id, rest[0]); return
     if cmd == "tmpl_limit":
         cur = WIZ[chat_id]["data"].setdefault("layouts", get_settings().get("layouts", {})).get("max_per_order", 3)
         kb = types.InlineKeyboardMarkup()
@@ -225,13 +230,33 @@ def _during_setup(m: types.Message):
         d = WIZ[chat_id]["data"].setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
         f_id = m.photo[-1].file_id
         col = d.setdefault("collages", [])
-        col.append(f_id)
-        kb = types.InlineKeyboardMarkup()
+        if len(col) < 5:
+            col.append(f_id)
+        kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(types.InlineKeyboardButton("Готово ✅", callback_data="setup:tmpl_collages_done"))
         kb.add(types.InlineKeyboardButton("Пропустить", callback_data="setup:tmpl_collages_done"))
+        kb.add(types.InlineKeyboardButton("Сбросить изображения (все макеты)", callback_data="setup:tmpl_collages_reset_all"))
+        kb.add(types.InlineKeyboardButton("Сбросить изображения (этот макет)", callback_data=f"setup:tmpl_collages_reset_one:{mk}"))
         edit(chat_id,
              f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nЗагружено коллажей: {len(col)}",
              kb)
+    elif st == "tmpl_collages_reset_all" and text:
+        if text.strip().upper() == "СБРОС":
+            for info in WIZ[chat_id]["data"].get("templates", {}).values():
+                info.pop("collages", None)
+            TCOLL.ask_collages_or_next(chat_id)
+        else:
+            TCOLL.reset_all(chat_id)
+    elif st.startswith("tmpl_collages_reset_one:") and text:
+        mk = st.split(":")[1]
+        if text.strip().upper() == "DELETE":
+            WIZ[chat_id]["data"].get("templates", {}).get(mk, {}).pop("collages", None)
+            TCOLL.ask_collages_or_next(chat_id)
+        else:
+            TCOLL.reset_one(chat_id, mk)
+    elif st.startswith("tmpl_color_add:") and text:
+        _, mk, num = st.split(":")
+        from .A7_TemplatesColors import handle_add_many; handle_add_many(chat_id, mk, num, text)
     # --- лимиты по шагам ---
     elif st == "limits_len" and text:
         try:
@@ -322,7 +347,18 @@ def _during_setup(m: types.Message):
             kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
             edit(chat_id, "Введите целое число ≥1:", kb)
     elif st == "tmpl_indicator" and text:
-        WIZ[chat_id]["data"].setdefault("layouts", {}).update({"selected_indicator": text.strip() or "🟩"})
-        render_templates_home(chat_id)
+        clusters = re.findall(r"\X", text.strip())
+        first = None
+        for cl in clusters:
+            if re.search(r"\p{Emoji}", cl):
+                first = cl
+                break
+        if first:
+            WIZ[chat_id]["data"].setdefault("layouts", {}).update({"selected_indicator": first})
+            render_templates_home(chat_id)
+        else:
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
+            edit(chat_id, "Не распознали эмодзи. Пришлите один символ эмодзи:", kb)
     # --- удаляем любое пользовательское сообщение ---
     _safe_del(chat_id, m.message_id)
