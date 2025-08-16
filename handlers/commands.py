@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from telebot import types
 from bot import bot
+from services import audit
 from services.settings import (
     is_admin,
     is_superadmin,
@@ -15,6 +16,11 @@ from services.settings import (
     del_promoter,
     get_promoters,
 )
+
+import io
+import csv
+import json
+import html
 
 
 def _extract_uid(message: types.Message) -> int | None:
@@ -112,7 +118,19 @@ def cmd_admin_add(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_admins()
     add_admin(uid)
+    after = get_admins()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.admin",
+        action="add",
+        entity=f"user:{uid}",
+        before={"admins": before},
+        after={"admins": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} добавлен в ADMINS")
 
 
@@ -124,7 +142,19 @@ def cmd_admin_del(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_admins()
     del_admin(uid)
+    after = get_admins()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.admin",
+        action="delete",
+        entity=f"user:{uid}",
+        before={"admins": before},
+        after={"admins": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} удалён из ADMINS")
 
 
@@ -134,6 +164,13 @@ def cmd_admin_list(message: types.Message):
         return
     admins = ", ".join(map(str, get_admins())) or "—"
     supers = ", ".join(map(str, SUPERADMINS)) or "—"
+    audit.add_event(
+        user=message.from_user,
+        section="roles.admin",
+        action="list",
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"SUPERADMINS: {supers}\nADMINS: {admins}")
 
 
@@ -145,7 +182,19 @@ def cmd_coord_add(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_coordinators()
     add_coordinator(uid)
+    after = get_coordinators()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.coordinator",
+        action="add",
+        entity=f"user:{uid}",
+        before={"coordinators": before},
+        after={"coordinators": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} добавлен в координаторы")
 
 
@@ -157,7 +206,19 @@ def cmd_coord_del(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_coordinators()
     del_coordinator(uid)
+    after = get_coordinators()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.coordinator",
+        action="delete",
+        entity=f"user:{uid}",
+        before={"coordinators": before},
+        after={"coordinators": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} удалён из координаторов")
 
 
@@ -166,6 +227,13 @@ def cmd_coord_list(message: types.Message):
     if not _require_admin(message):
         return
     coords = ", ".join(map(str, get_coordinators())) or "—"
+    audit.add_event(
+        user=message.from_user,
+        section="roles.coordinator",
+        action="list",
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"Координаторы: {coords}")
 
 
@@ -177,7 +245,19 @@ def cmd_promo_add(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_promoters()
     add_promoter(uid)
+    after = get_promoters()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.promoter",
+        action="add",
+        entity=f"user:{uid}",
+        before={"promoters": before},
+        after={"promoters": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} добавлен в промоутеры")
 
 
@@ -189,7 +269,19 @@ def cmd_promo_del(message: types.Message):
     if uid is None:
         bot.reply_to(message, "Укажите user_id")
         return
+    before = get_promoters()
     del_promoter(uid)
+    after = get_promoters()
+    audit.add_event(
+        user=message.from_user,
+        section="roles.promoter",
+        action="delete",
+        entity=f"user:{uid}",
+        before={"promoters": before},
+        after={"promoters": after},
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"✅ Пользователь {uid} удалён из промоутеров")
 
 
@@ -198,6 +290,107 @@ def cmd_promo_list(message: types.Message):
     if not _require_admin(message):
         return
     promos = ", ".join(map(str, get_promoters())) or "—"
+    audit.add_event(
+        user=message.from_user,
+        section="roles.promoter",
+        action="list",
+        chat_id=message.chat.id,
+        message_id=message.message_id,
+    )
     bot.reply_to(message, f"Промоутеры: {promos}")
+
+
+def _render_audit(period: str = "24h", page: int = 0):
+    events = audit.query_events(period=period, limit=1000)
+    per_page = 20
+    total_pages = max(1, (len(events) + per_page - 1) // per_page)
+    start = page * per_page
+    slice_events = events[start:start + per_page]
+    lines = []
+    for idx, e in enumerate(slice_events, start=start + 1):
+        ts = e.get("ts", "")[:16].replace("T", " ")
+        user = e.get("actor_username") or e.get("actor_name") or str(e.get("actor_id"))
+        section = e.get("section", "")
+        action = e.get("action", "")
+        entity = e.get("entity", "") or ""
+        scope = f" scope:{e['scope']}" if e.get("scope") else ""
+        lines.append(f"#{idx:04d} {ts} @{user} {section}{scope} {action} {entity}")
+    body = "\n".join(lines) or "(пусто)"
+    text = f"Журнал аудита\n<pre>{html.escape(body)}</pre>"
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton("Сегодня", callback_data="logroll:p:today:0"),
+        types.InlineKeyboardButton("24ч", callback_data="logroll:p:24h:0"),
+        types.InlineKeyboardButton("7д", callback_data="logroll:p:7d:0"),
+        types.InlineKeyboardButton("Всё", callback_data="logroll:p:all:0"),
+    )
+    nav = []
+    if page > 0:
+        nav.append(types.InlineKeyboardButton("‹ Назад", callback_data=f"logroll:p:{period}:{page-1}"))
+    if page + 1 < total_pages:
+        nav.append(types.InlineKeyboardButton("Далее ›", callback_data=f"logroll:p:{period}:{page+1}"))
+    if nav:
+        markup.row(*nav)
+    markup.row(
+        types.InlineKeyboardButton("Экспорт CSV", callback_data=f"logroll:export:csv:{period}"),
+        types.InlineKeyboardButton("Экспорт JSON", callback_data=f"logroll:export:json:{period}"),
+    )
+    markup.row(
+        types.InlineKeyboardButton("Обновить", callback_data=f"logroll:p:{period}:{page}"),
+        types.InlineKeyboardButton("Закрыть", callback_data="logroll:close"),
+    )
+    return text, markup
+
+
+@bot.message_handler(func=lambda m: (m.text or "").strip().lower() in ("\\log_roll", "/log_roll"))
+def cmd_log_roll(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+    text, markup = _render_audit()
+    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+
+
+@bot.callback_query_handler(func=lambda c: c.data and c.data.startswith("logroll:"))
+def cb_log_roll(c: types.CallbackQuery):
+    if not is_admin(c.from_user.id):
+        return
+    bot.answer_callback_query(c.id)
+    parts = c.data.split(":")
+    if parts[1] == "p":
+        period = parts[2]
+        page = int(parts[3])
+        text, markup = _render_audit(period, page)
+        bot.edit_message_text(text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="HTML")
+    elif parts[1] == "export":
+        fmt = parts[2]
+        period = parts[3]
+        events = audit.query_events(period=period, limit=1000)
+        if fmt == "json":
+            data = json.dumps(events, ensure_ascii=False, indent=2)
+            buf = io.BytesIO(data.encode("utf-8"))
+            buf.name = f"audit_{period}.json"
+        else:
+            buf_txt = io.StringIO()
+            writer = csv.writer(buf_txt)
+            writer.writerow(["ts", "actor_id", "actor_username", "section", "action", "scope", "entity", "before", "after", "notes", "request_id"])
+            for e in events:
+                writer.writerow([
+                    e.get("ts"),
+                    e.get("actor_id"),
+                    e.get("actor_username"),
+                    e.get("section"),
+                    e.get("action"),
+                    e.get("scope"),
+                    e.get("entity"),
+                    json.dumps(e.get("before"), ensure_ascii=False),
+                    json.dumps(e.get("after"), ensure_ascii=False),
+                    e.get("notes"),
+                    e.get("request_id"),
+                ])
+            buf = io.BytesIO(buf_txt.getvalue().encode("utf-8"))
+            buf.name = f"audit_{period}.csv"
+        bot.send_document(c.message.chat.id, buf)
+    elif parts[1] == "close":
+        bot.delete_message(c.message.chat.id, c.message.message_id)
 
 
