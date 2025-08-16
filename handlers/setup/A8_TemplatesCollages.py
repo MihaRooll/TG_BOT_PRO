@@ -3,9 +3,17 @@
 from telebot import types
 from .core import WIZ, edit
 
+
 def start_for_merchs(chat_id: int, mks: list[str], done_cb=None):
     d = WIZ[chat_id]["data"]
     d["_collages_queue"] = mks
+    d["_collages_done"] = done_cb
+    _next(chat_id)
+
+
+def start_global(chat_id: int, done_cb=None):
+    d = WIZ[chat_id]["data"]
+    d["_collages_queue"] = ["__global__"]
     d["_collages_done"] = done_cb
     _next(chat_id)
 
@@ -15,7 +23,8 @@ def _next(chat_id: int):
     queue = d.get("_collages_queue", [])
     while queue:
         mk = queue[0]
-        if d.get("templates", {}).get(mk, {}).get("templates"):
+        info = d.setdefault("templates", {}).setdefault(mk, {"templates": {}, "collages": []})
+        if mk == "__global__" or info.get("templates"):
             d["_mk_collages"] = mk
             kb = types.InlineKeyboardMarkup(row_width=1)
             kb.add(types.InlineKeyboardButton("Готово ✅", callback_data="setup:tmpl_collages_done"))
@@ -25,10 +34,11 @@ def _next(chat_id: int):
                 "Сбросить изображения (этот макет)",
                 callback_data=f"setup:tmpl_collages_reset_one:{mk}",
             ))
-            cnt = len(d["templates"][mk].get("collages", []))
+            cnt = len(info.get("collages", []))
+            scope_tag = "Глобально" if mk == "__global__" else d.get("merch", {}).get(mk, {}).get("name_ru", mk)
             edit(
                 chat_id,
-                f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nЗагружено коллажей: {cnt}",
+                f"Шаг 3.3/4. Пришлите 1–5 изображений‑коллажей (со списком макетов).\nПрименяется: {scope_tag}\nЗагружено коллажей: {cnt}",
                 kb,
             )
             WIZ[chat_id]["stage"] = f"tmpl_collages:{mk}"
@@ -62,5 +72,6 @@ def reset_all(chat_id: int):
 def reset_one(chat_id: int, mk: str):
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpl_collages"))
-    edit(chat_id, f"Type DELETE to remove images for {mk}.", kb)
+    tag = "Глобально" if mk == "__global__" else mk
+    edit(chat_id, f"Type DELETE to remove images for {tag}.", kb)
     WIZ[chat_id]["stage"] = f"tmpl_collages_reset_one:{mk}"

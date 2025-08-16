@@ -2,6 +2,7 @@
 from __future__ import annotations
 import re
 from telebot import types
+from services import audit
 from .core import WIZ, edit
 
 
@@ -84,3 +85,68 @@ def handle_input(chat_id: int, text: str):
             tmpl = templates.setdefault(mk, {"templates": {}, "collages": []})
             tmpl.setdefault("templates", {}).setdefault(tok, {"allowed_colors": []})
     render_prompt(chat_id, skipped)
+
+
+# ---- scope linter -----------------------------------------------------------
+RULES = {
+    r"^A\d+$": {"merch_ru": "Футболки"},
+    r"^D\d+$": {"merch_ru": "Шопперы"},
+}
+
+
+def scope_lint(chat_id: int):
+    d = WIZ[chat_id]["data"]
+    g = d.get("templates", {}).get("__global__", {}).get("templates", {})
+    misplaced: dict[str, list[str]] = {}
+    for tok in g.keys():
+        for rx, target in RULES.items():
+            if re.match(rx, tok):
+                mk = _find_merch_key(d, target["merch_ru"])
+                if mk:
+                    misplaced.setdefault(mk, []).append(tok)
+                break
+    if not misplaced:
+        kb = types.InlineKeyboardMarkup().add(
+            types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpl_nums")
+        )
+        edit(chat_id, "Линтер: проблем не найдено.", kb)
+        return
+    mk, tokens = next(iter(misplaced.items()))
+    tokens_str = ", ".join(tokens)
+    merch_name = d["merch"][mk]["name_ru"]
+    d["_lint_move"] = {"target": mk, "tokens": tokens}
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("Перенести", callback_data="setup:tmpl_scope_lint_move"),
+        types.InlineKeyboardButton("Оставить", callback_data="setup:tmpl_nums"),
+    )
+    edit(
+        chat_id,
+        f"Найдено: {tokens_str} в «Глобально». Предложение: перенести → {merch_name}.\nПереместим {len(tokens)} записей.",
+        kb,
+    )
+
+
+def apply_lint_move(chat_id: int):
+    d = WIZ[chat_id]["data"]
+    info = d.pop("_lint_move", {})
+    tokens = info.get("tokens", [])
+    target = info.get("target")
+    if not tokens or not target:
+        from .router import render_templates_home
+        render_templates_home(chat_id)
+        return
+    src = d.setdefault("templates", {}).setdefault("__global__", {}).setdefault("templates", {})
+    dst = d.setdefault("templates", {}).setdefault(target, {"templates": {}, "collages": []}).setdefault("templates", {})
+    for t in tokens:
+        dst[t] = src.pop(t)
+    audit.add_event(section="layouts.numbers", action="move", scope=f"global->{target}", entity=",".join(tokens))
+    from .router import render_templates_home
+    render_templates_home(chat_id)
+
+
+def _find_merch_key(d: dict, name_ru: str) -> str | None:
+    for mk, info in d.get("merch", {}).items():
+        if info.get("name_ru") == name_ru:
+            return mk
+    return None

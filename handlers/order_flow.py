@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import html
+from collections import defaultdict
 from telebot import types
 from telebot.apihelper import ApiTelegramException
 from bot import bot
 import config
-from services.settings import get_settings, get_admin_bind
+from services.settings import get_settings, get_admin_bind, is_admin
 from services.orders import next_order_no, inc_user_orders
 from services.inventory import (
     get_merch_inv, get_letters_inv, get_numbers_inv, get_templates_inv,
@@ -21,6 +22,141 @@ def _admin_target():
     if chat_id:
         return chat_id, thread_id
     return getattr(config, "ADMIN_CHAT_ID", None), None
+
+
+def _calc_tpl_avail(mk: str, ck: str) -> tuple[list[str], dict[str, list[str]], dict[str, list[str]], set[str]]:
+    """Return available layouts, grouped hidden reasons and warnings.
+
+    Hidden reasons include:
+        not_in_scope, denied_by_color, stock_zero, stock_missing,
+        limit_zero, archived.
+    Warnings include:
+        mapping_missing, stock_missing (when not hidden).
+    """
+
+    s = get_settings()
+    invt = get_templates_inv()
+    tmpl = s.get("templates", {})
+
+    g_nums = set(tmpl.get("__global__", {}).get("templates", {}))
+    m_nums = set(tmpl.get(mk, {}).get("templates", {}))
+    c_nums = set(
+        tmpl.get(mk, {})
+        .get("colors", {})
+        .get(ck, {})
+        .get("templates", {})
+    )
+    s_numbers = g_nums | m_nums | c_nums
+
+    inv_nums = set(
+        invt.get("__global__", {}).get("templates", {}).keys()
+    ) | set(
+        invt.get(mk, {}).get("templates", {}).keys()
+    ) | set(
+        invt.get(mk, {}).get("colors", {})
+        .get(ck, {})
+        .get("templates", {})
+        .keys()
+    )
+
+    all_nums = sorted(s_numbers | inv_nums, key=lambda x: (len(x), x))
+
+    hidden: dict[str, list[str]] = defaultdict(list)
+    warn: dict[str, list[str]] = defaultdict(list)
+
+    show_missing_stock = s.get("orders", {}).get("layouts_missing_stock", "show") != "hide"
+
+    for num in all_nums:
+        if num not in s_numbers:
+            hidden["not_in_scope"].append(num)
+            continue
+
+        # --- allow/deny mapping -------------------------------------------------
+        def eval_allowed(meta: dict | None) -> bool | None:
+            if not meta:
+                return None
+            allowed = meta.get("allowed_colors")
+            if isinstance(allowed, list) and allowed:
+                return ck in allowed
+            return None
+
+        meta_color = (
+            tmpl.get(mk, {})
+            .get("colors", {})
+            .get(ck, {})
+            .get("templates", {})
+            .get(num, {})
+        )
+        meta_merch = tmpl.get(mk, {}).get("templates", {}).get(num, {})
+        meta_global = tmpl.get("__global__", {}).get("templates", {}).get(num, {})
+
+        allowed = eval_allowed(meta_color)
+        if allowed is None:
+            allowed = eval_allowed(meta_merch)
+        if allowed is None:
+            allowed = eval_allowed(meta_global)
+
+        if allowed is False:
+            hidden["denied_by_color"].append(num)
+            continue
+        if allowed is None:
+            warn["mapping_missing"].append(num)
+
+        # --- stock --------------------------------------------------------------
+        def stock_lookup() -> int | None:
+            scopes = [
+                invt.get(mk, {})
+                .get("colors", {})
+                .get(ck, {})
+                .get("templates", {}),
+                invt.get(mk, {}).get("templates", {}),
+                invt.get("__global__", {}).get("templates", {}),
+            ]
+            for sc in scopes:
+                if sc is None:
+                    continue
+                q = sc.get(num, {}).get("qty")
+                if q is not None:
+                    return q
+            return None
+
+        qty = stock_lookup()
+        if qty is None:
+            if show_missing_stock:
+                warn["stock_missing"].append(num)
+            else:
+                hidden["stock_missing"].append(num)
+                continue
+        elif qty == 0:
+            hidden["stock_zero"].append(num)
+            continue
+
+        # --- limit --------------------------------------------------------------
+        def limit_lookup() -> int | None:
+            for meta in (meta_color, meta_merch, meta_global):
+                if isinstance(meta, dict) and isinstance(meta.get("limit"), int):
+                    return meta["limit"]
+            return None
+
+        limit = limit_lookup()
+        if isinstance(limit, int) and limit == 0:
+            hidden["limit_zero"].append(num)
+            continue
+
+        # --- archived -----------------------------------------------------------
+        def is_archived() -> bool:
+            for meta in (meta_color, meta_merch, meta_global):
+                if isinstance(meta, dict) and meta.get("archived"):
+                    return True
+            return False
+
+        if is_archived():
+            hidden["archived"].append(num)
+            continue
+
+        avail.append(num)
+
+    return avail, {k: v for k, v in hidden.items() if v}, {k: v for k, v in warn.items() if v}, s_numbers
 
 def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
     target, thread_id = _admin_target()
@@ -345,28 +481,34 @@ def _render_tpl_step(chat_id: int):
 
     kb.row(types.InlineKeyboardButton("Дальше", callback_data="order:tpl_done"))
     kb.row(types.InlineKeyboardButton("Очистить выбор макетов", callback_data="order:tpl_clear"))
+    kb.row(types.InlineKeyboardButton("Обновить список макетов", callback_data="order:tpl_refresh"))
+
+    hidden = ORD[chat_id].get("hidden_tpls", {})
+    hidden_count = sum(len(v) for v in hidden.values())
+    if hidden_count and is_admin(chat_id):
+        kb.row(types.InlineKeyboardButton("Показать почему", callback_data="order:tpl_hidden"))
 
     joined = "·".join(sorted(sel)) if sel else "—"
     text = f"🖼 Макеты ({len(sel)}/{limit}): {joined}"
+    if hidden_count and is_admin(chat_id):
+        text += f"\nℹ️ Скрыто: {hidden_count}."
     safe_edit_message(bot, chat_id, ORD[chat_id]["mid"], text, kb)
 
 
 def _prompt_templates(chat_id: int):
-    s = get_settings(); invt = get_templates_inv()
     mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
-    tmpl_def = s.get("templates", {}).get(mk, {})
-    tpls = tmpl_def.get("templates", {})
-    avail = []
-    for num, meta in tpls.items():
-        if ck in meta.get("allowed_colors", []):
-            qty = invt.get(mk, {}).get("templates", {}).get(num, {}).get("qty", 0)
-            if qty > 0:
-                avail.append(num)
-    # remove old summary
+    s = get_settings()
+    tmpl_store = s.get("templates", {})
+    tmpl_def = tmpl_store.get(mk, {})
+
+    avail, hidden, warns, s_numbers = _calc_tpl_avail(mk, ck)
+
     safe_delete(bot, chat_id, ORD[chat_id]["mid"])
-    # send collages above summary
-    img_ids = []
-    colls = tmpl_def.get("collages", [])
+
+    img_ids: list[int] = []
+    colls = tmpl_store.get(mk, {}).get("collages")
+    if not colls:
+        colls = tmpl_store.get("__global__", {}).get("collages", [])
     if colls:
         media = [types.InputMediaPhoto(fid) for fid in colls[:5]]
         try:
@@ -378,8 +520,51 @@ def _prompt_templates(chat_id: int):
         except Exception:
             pass
     ORD[chat_id]["tpl_img_ids"] = img_ids
+
+    merch_name = s.get("merch", {}).get(mk, {}).get("name_ru", mk)
+    color_name = s.get("merch", {}).get(mk, {}).get("colors", {}).get(ck, {}).get("name_ru", ck)
+    ORD[chat_id]["color_name"] = color_name
+
+    g_nums = set(tmpl_store.get("__global__", {}).get("templates", {}))
+    l_nums = set(tmpl_store.get(mk, {}).get("templates", {}))
+
+    if not s_numbers:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(types.InlineKeyboardButton(
+            f"Применить глобальные макеты к «{merch_name}»",
+            callback_data=f"setup:matrix_apply_global:{mk}"
+        ))
+        kb.add(types.InlineKeyboardButton("Добавить номера макетов (Глобально)", callback_data="setup:tmpl_nums_global"))
+        kb.add(types.InlineKeyboardButton(
+            f"Добавить номера макетов (Для «{merch_name}»)",
+            callback_data=f"setup:tmpl_nums_for:{mk}"
+        ))
+        msg = bot.send_message(
+            chat_id,
+            f"⚠️ Для «{merch_name}» пока нет макетов.",
+            reply_markup=kb,
+        )
+        ORD[chat_id]["mid"] = msg.message_id
+        return
+
+    if g_nums and mk in tmpl_store and not l_nums:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(types.InlineKeyboardButton("Сбросить до глобальных", callback_data=f"setup:matrix_reset_global:{mk}"))
+        kb.add(types.InlineKeyboardButton("Оставить как есть", callback_data="setup:tmpl_map"))
+        msg = bot.send_message(
+            chat_id,
+            f"🚫 У «{merch_name}» есть локальное переопределение, которое отключает глобальные макеты.\nСбросить до глобальных?",
+            reply_markup=kb,
+        )
+        ORD[chat_id]["mid"] = msg.message_id
+        return
+
     if not avail:
-        msg = bot.send_message(chat_id, "Доступных макетов нет.")
+        msg = bot.send_message(
+            chat_id,
+            f"⚠️ Нет доступных макетов для {merch_name} / {color_name}. "
+            "Измените параметры или проверьте настройки макетов.",
+        )
         ORD[chat_id]["mid"] = msg.message_id
         _prompt_comment_phone(chat_id)
         return
@@ -391,7 +576,9 @@ def _prompt_templates(chat_id: int):
         return
     msg = bot.send_message(chat_id, "...")
     ORD[chat_id]["mid"] = msg.message_id
-    ORD[chat_id]["avail_tpls"] = avail
+    ORD[chat_id]["avail_tpls"] = sorted(avail, key=lambda x: (len(x), x))
+    ORD[chat_id]["hidden_tpls"] = hidden
+    ORD[chat_id]["tpl_warns"] = warns
     ORD[chat_id]["selected_tpls"] = []
     max_global = s.get("layouts", {}).get("max_per_order", len(avail))
     ORD[chat_id]["tpl_limit"] = min(tmpl_def.get("limit", len(avail)), max_global)
@@ -402,7 +589,21 @@ def _prompt_templates(chat_id: int):
 def order_tpl_cb(c: types.CallbackQuery):
     chat_id = c.message.chat.id
     if c.data == "order:tpl_done":
-        ORD[chat_id]["templates"] = ", ".join(sorted(set(ORD[chat_id].get("selected_tpls", [])))) or "Без макета"
+        mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
+        avail, hidden, warns, _ = _calc_tpl_avail(mk, ck)
+        ORD[chat_id]["avail_tpls"] = sorted(avail, key=lambda x: (len(x), x))
+        ORD[chat_id]["hidden_tpls"] = hidden
+        ORD[chat_id]["tpl_warns"] = warns
+        sel = ORD[chat_id].get("selected_tpls", [])
+        invalid = [t for t in sel if t not in avail]
+        if invalid:
+            for t in invalid:
+                if t in sel:
+                    sel.remove(t)
+            bot.send_message(chat_id, f"⚠️ Макет {invalid[0]} недоступен. Обновили список.")
+            _render_tpl_step(chat_id)
+            return
+        ORD[chat_id]["templates"] = ", ".join(sorted(set(sel))) or "Без макета"
         _prompt_comment_phone(chat_id)
         return
     if c.data == "order:tpl_clear":
@@ -414,6 +615,47 @@ def order_tpl_cb(c: types.CallbackQuery):
         delta = int(c.data.split(":")[2])
         ORD[chat_id]["tpl_page"] = max(0, ORD[chat_id].get("tpl_page", 0) + delta)
         bot.answer_callback_query(c.id)
+        _render_tpl_step(chat_id)
+        return
+    if c.data == "order:tpl_hidden":
+        hidden = ORD[chat_id].get("hidden_tpls") or {}
+        if hidden:
+            lines = ["Скрытые макеты и причины:"]
+            color_name = ORD[chat_id].get("color_name", "")
+            reason_map = {
+                "stock_zero": "stock=0",
+                "stock_missing": "нет данных об остатках",
+                "not_in_scope": "не найдены в области (не добавлены для этого мерча/глобально)",
+                "denied_by_color": f"запрещён по цвету ({color_name})",
+                "limit_zero": "limit=0",
+                "archived": "архивирован",
+            }
+            for key, nums in hidden.items():
+                msg = reason_map.get(key, key)
+                lines.append(f"• {', '.join(nums)} — {msg}")
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("Обновить", callback_data="order:tpl_refresh"))
+            kb.add(types.InlineKeyboardButton("Скрыть причины", callback_data="order:tpl_hidden_close"))
+            msg = bot.send_message(chat_id, "\n".join(lines), reply_markup=kb)
+            ORD[chat_id]["hidden_msg"] = msg.message_id
+        bot.answer_callback_query(c.id)
+        return
+    if c.data == "order:tpl_hidden_close":
+        mid = ORD[chat_id].pop("hidden_msg", None)
+        if mid:
+            safe_delete(bot, chat_id, mid)
+        bot.answer_callback_query(c.id)
+        return
+    if c.data == "order:tpl_refresh":
+        mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
+        avail, hidden, warns, _ = _calc_tpl_avail(mk, ck)
+        ORD[chat_id]["avail_tpls"] = sorted(avail, key=lambda x: (len(x), x))
+        ORD[chat_id]["hidden_tpls"] = hidden
+        ORD[chat_id]["tpl_warns"] = warns
+        bot.answer_callback_query(c.id, "Обновлено")
+        mid = ORD[chat_id].pop("hidden_msg", None)
+        if mid:
+            safe_delete(bot, chat_id, mid)
         _render_tpl_step(chat_id)
         return
     n = c.data.split(":")[2]
