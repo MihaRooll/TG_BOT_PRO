@@ -12,6 +12,8 @@ jobs:
   delete-preview:
     runs-on: [self-hosted, Windows, X64, tg-bot]
     timeout-minutes: 15
+    env:
+      TG_Token: ${{ secrets.TG_Token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +26,11 @@ jobs:
 
       - name: Down preview stack
         shell: powershell
+        env:
+          TG_Token: ${{ env.TG_Token }}
         continue-on-error: true
         run: |
+          echo "::add-mask::${env:TG_Token}"
           if (Test-Path 'compose.preview.yml') {
             docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM down -v
           }

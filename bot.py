@@ -13,4 +13,4 @@ apihelper.CONNECT_TIMEOUT = config.CONNECT_TIMEOUT
 apihelper.READ_TIMEOUT = config.READ_TIMEOUT
 apihelper.SESSION_TIME_TO_LIVE = config.SESSION_TTL
 
-bot = TeleBot(config.BOT_TOKEN, parse_mode="HTML")
+bot = TeleBot(config.get_bot_token(), parse_mode="HTML")
