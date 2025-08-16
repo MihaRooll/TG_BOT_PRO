@@ -5,7 +5,7 @@ from telebot.apihelper import ApiTelegramException
 from bot import bot
 import config
 from services.settings import get_settings, get_admin_bind
-from services.orders import next_order_no
+from services.orders import next_order_no, inc_user_orders
 from services.inventory import (
     get_merch_inv, get_letters_inv, get_numbers_inv, get_templates_inv,
     dec_size, dec_letter, dec_number, dec_template
@@ -164,7 +164,7 @@ def _prompt_text(chat_id: int):
     ORD[chat_id]["step"] = "text_wait"
 
 
-@bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "text_wait")
+@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and ORD.get(m.chat.id, {}).get("step") == "text_wait")
 def order_text_set(m: types.Message):
     chat_id = m.chat.id
     mid = ORD.get(chat_id, {}).get("mid")
@@ -240,7 +240,7 @@ def _prompt_number(chat_id: int):
     ORD[chat_id]["step"] = "number_wait"
 
 
-@bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "number_wait")
+@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and ORD.get(m.chat.id, {}).get("step") == "number_wait")
 def order_number_set(m: types.Message):
     chat_id = m.chat.id
     mid = ORD.get(chat_id, {}).get("mid")
@@ -437,7 +437,7 @@ def _prompt_comment_phone(chat_id: int):
     safe_edit_message(bot, chat_id, mid, "Добавить комментарий к заказу?", kb)
     ORD[chat_id]["step"] = "comment_wait"
 
-@bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "comment_wait")
+@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and ORD.get(m.chat.id, {}).get("step") == "comment_wait")
 def order_comment_set(m: types.Message):
     chat_id = m.chat.id
     ORD[chat_id]["comment"] = m.text.strip()
@@ -459,7 +459,7 @@ def _prompt_phone(chat_id: int):
     safe_edit_message(bot, chat_id, mid, "Введите номер телефона (или пропустите):", kb)
     ORD[chat_id]["step"] = "phone_wait"
 
-@bot.message_handler(func=lambda m: ORD.get(m.chat.id, {}).get("step") == "phone_wait")
+@bot.message_handler(func=lambda m: m.text and not m.text.startswith("/") and ORD.get(m.chat.id, {}).get("step") == "phone_wait")
 def order_phone_set(m: types.Message):
     chat_id = m.chat.id
     ORD[chat_id]["phone"] = m.text.strip()
@@ -705,6 +705,8 @@ def order_finalize(c: types.CallbackQuery):
     if d.get("templates") and d["templates"] != "Без макета":
         for num in d["templates"].split(","):
             dec_template(d["merch"], num.strip())
+
+    inc_user_orders(chat_id)
 
     mid = ORD.get(chat_id, {}).get("mid", c.message.message_id)
     safe_edit_message(bot, chat_id, mid, final_text, parse_mode="HTML")
