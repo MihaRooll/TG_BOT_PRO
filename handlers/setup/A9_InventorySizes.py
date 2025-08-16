@@ -14,14 +14,14 @@ def open_inventory_home(chat_id: int):
     inv_on = bool(inv_merch or inv_letters or inv_numbers or inv_tmpls)
     block = [
         f"📦 Остатки [✅ ВКЛ]{' ✅ — внесли' if inv_on else ' — не внесли'}",
-        f"├─ Размеры: {'✅ — внесли' if inv_merch else '— не внесли'}",
+        f"├─ Мерч: {'✅ — внесли' if inv_merch else '— не внесли'}",
         f"├─ Буквы: {'✅ — внесли' if inv_letters else '— не внесли'}",
         f"├─ Цифры: {'✅ — внесли' if inv_numbers else '— не внесли'}",
         f"└─ Макеты: {'✅ — внесли' if inv_tmpls else '— не внесли'}",
     ]
     block_txt = "\n".join(block)
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("Размеры", callback_data="setup:inv_merch"))
+    kb.add(types.InlineKeyboardButton("Мерч", callback_data="setup:inv_merch"))
     kb.add(types.InlineKeyboardButton("Буквы", callback_data="setup:inv_letters"))
     kb.add(types.InlineKeyboardButton("Цифры", callback_data="setup:inv_numbers"))
     kb.add(types.InlineKeyboardButton("Макеты", callback_data="setup:inv_templates"))
@@ -312,7 +312,9 @@ def open_inventory_templates(chat_id: int):
             kb.add(types.InlineKeyboardButton(name, callback_data=f"setup:inv_tmpl_nums:{mk}"))
     kb.add(types.InlineKeyboardButton("✅ Готово", callback_data="setup:inv"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv"))
-    edit(chat_id, "Остатки макетов — выберите <b>вид мерча</b>.", kb)
+    if WIZ[chat_id].get("flow_origin") == "step3":
+        kb.add(types.InlineKeyboardButton("↩️ К Шагу 3/4 — Макеты", callback_data="setup:tmpl_back"))
+    edit(chat_id, "📦 Остатки → Макеты — выберите <b>вид мерча</b>.", kb)
 
 def open_template_numbers(chat_id: int, mk: str):
     if mk == "__all":
@@ -337,9 +339,14 @@ def open_template_numbers(chat_id: int, mk: str):
     done_cb = "setup:inv_tmpl_next" if scope else "setup:inv"
     kb.add(types.InlineKeyboardButton("✅ Готово", callback_data=done_cb))
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:inv_templates"))
-    edit(chat_id,
-         f"Остатки макетов — выберите номера макетов ({WIZ[chat_id]['data']['merch'][mk]['name_ru']}).",
-         kb)
+    if WIZ[chat_id].get("flow_origin") == "step3":
+        kb.add(types.InlineKeyboardButton("↩️ К Шагу 3/4 — Макеты", callback_data="setup:tmpl_back"))
+    if scope:
+        header = "📦 Остатки → Макеты — Область: Глобально\nВыберите номера макетов."
+    else:
+        merch_name = WIZ[chat_id]['data']['merch'][mk]['name_ru']
+        header = f"📦 Остатки → Макеты — Область: {merch_name}\nВыберите номера макетов."
+    edit(chat_id, header, kb)
 
 def open_template_qty_spinner(chat_id: int, mk: str, num: str):
     WIZ[chat_id]["stage"] = f"inv_tmpl_qty:{mk}:{num}"
@@ -359,11 +366,14 @@ def open_template_qty_spinner(chat_id: int, mk: str, num: str):
     )
     kb.add(types.InlineKeyboardButton("✅ Сохранить", callback_data=f"setup:inv_tmpl_save:{mk}:{num}"))
     kb.add(types.InlineKeyboardButton("⬅️ Назад к номерам", callback_data=f"setup:inv_tmpl_nums:{mk}"))
-    edit(
-        chat_id,
-        f"Введите количество макетов <b>{num}</b> для {WIZ[chat_id]['data']['merch'][mk]['name_ru']}:\nТекущее: <b>{cur}</b>",
-        kb,
-    )
+    if WIZ[chat_id].get("flow_origin") == "step3":
+        kb.add(types.InlineKeyboardButton("↩️ К Шагу 3/4 — Макеты", callback_data="setup:tmpl_back"))
+    if WIZ[chat_id]["data"].get("_inv_tmpl_scope"):
+        header = f"📦 Остатки → Макеты — Область: Глобально\nВведите количество макетов <b>{num}</b>:\nТекущее: <b>{cur}</b>"
+    else:
+        merch_name = WIZ[chat_id]['data']['merch'][mk]['name_ru']
+        header = f"📦 Остатки → Макеты — Область: {merch_name}\nВведите количество макетов <b>{num}</b>:\nТекущее: <b>{cur}</b>"
+    edit(chat_id, header, kb)
 
 def adjust_template_qty(chat_id: int, mk: str, num: str, delta: int):
     inv = WIZ[chat_id]["data"].setdefault("_inv_tmpls", {}).setdefault(mk, {}).setdefault("templates", {})
@@ -385,7 +395,14 @@ def apply_all_templates(chat_id: int, mk: str):
     WIZ[chat_id]["stage"] = f"inv_tmpl_all:{mk}"
     kb = types.InlineKeyboardMarkup()
     kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data=f"setup:inv_tmpl_nums:{mk}"))
-    edit(chat_id, f"Введите одно число ко всем макетам <b>{WIZ[chat_id]['data']['merch'][mk]['name_ru']}</b>.", kb)
+    if WIZ[chat_id].get("flow_origin") == "step3":
+        kb.add(types.InlineKeyboardButton("↩️ К Шагу 3/4 — Макеты", callback_data="setup:tmpl_back"))
+    if WIZ[chat_id]["data"].get("_inv_tmpl_scope"):
+        header = "📦 Остатки → Макеты — Область: Глобально\nВведите одно число ко всем макетам."
+    else:
+        merch_name = WIZ[chat_id]['data']['merch'][mk]['name_ru']
+        header = f"📦 Остатки → Макеты — Область: {merch_name}\nВведите одно число ко всем макетам."
+    edit(chat_id, header, kb)
 
 
 def set_all_templates(chat_id: int, mk: str, val: int):
