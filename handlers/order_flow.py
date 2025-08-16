@@ -4,7 +4,7 @@ from telebot import types
 from telebot.apihelper import ApiTelegramException
 from bot import bot
 import config
-from services.settings import get_settings, get_admin_bind
+from services.settings import get_settings, get_admin_bind, is_admin
 from services.orders import next_order_no, inc_user_orders
 from services.inventory import (
     get_merch_inv, get_letters_inv, get_numbers_inv, get_templates_inv,
@@ -21,6 +21,48 @@ def _admin_target():
     if chat_id:
         return chat_id, thread_id
     return getattr(config, "ADMIN_CHAT_ID", None), None
+
+
+def _calc_tpl_avail(mk: str, ck: str) -> tuple[list[str], dict[str, str]]:
+    """Return available template numbers and reasons for hidden ones."""
+
+    s = get_settings()
+    invt = get_templates_inv()
+    tmpl_store = s.get("templates", {})
+
+    tpls: dict[str, dict] = {}
+    for num, meta in tmpl_store.get("__global__", {}).get("templates", {}).items():
+        tpls.setdefault(num, {}).update(meta)
+    for num, meta in tmpl_store.get(mk, {}).get("templates", {}).items():
+        tpls.setdefault(num, {}).update(meta)
+
+    merch_name = s.get("merch", {}).get(mk, {}).get("name_ru", mk)
+    color_name = s.get("merch", {}).get(mk, {}).get("colors", {}).get(ck, {}).get("name_ru", ck)
+
+    hidden: dict[str, str] = {}
+    avail: list[str] = []
+    for num, meta in tpls.items():
+        allowed = meta.get("allowed_colors")
+        if allowed:
+            if ck not in allowed:
+                hidden[num] = f"запрещён по цвету ({color_name})"
+                continue
+        if meta.get("archived"):
+            hidden[num] = "архивирован"
+            continue
+        if isinstance(meta.get("limit"), int) and meta.get("limit") == 0:
+            hidden[num] = "limit=0"
+            continue
+        qty = invt.get(mk, {}).get("templates", {}).get(num, {}).get("qty")
+        if qty is None:
+            qty = invt.get("__global__", {}).get("templates", {}).get(num, {}).get("qty")
+        if qty is None:
+            qty = 0
+        if qty <= 0:
+            hidden[num] = "stock=0"
+            continue
+        avail.append(num)
+    return sorted(avail, key=lambda x: (len(x), x)), hidden
 
 def _send_to_admin_or_warn(user_chat_id: int, text: str) -> None:
     target, thread_id = _admin_target()
@@ -345,6 +387,9 @@ def _render_tpl_step(chat_id: int):
 
     kb.row(types.InlineKeyboardButton("Дальше", callback_data="order:tpl_done"))
     kb.row(types.InlineKeyboardButton("Очистить выбор макетов", callback_data="order:tpl_clear"))
+    hidden = ORD[chat_id].get("hidden_tpls")
+    if hidden and is_admin(chat_id):
+        kb.row(types.InlineKeyboardButton("🔍 Показать скрытые (почему)", callback_data="order:tpl_hidden"))
 
     joined = "·".join(sorted(sel)) if sel else "—"
     text = f"🖼 Макеты ({len(sel)}/{limit}): {joined}"
@@ -352,20 +397,15 @@ def _render_tpl_step(chat_id: int):
 
 
 def _prompt_templates(chat_id: int):
-    s = get_settings(); invt = get_templates_inv()
     mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
+    s = get_settings()
     tmpl_def = s.get("templates", {}).get(mk, {})
-    tpls = tmpl_def.get("templates", {})
-    avail = []
-    for num, meta in tpls.items():
-        if ck in meta.get("allowed_colors", []):
-            qty = invt.get(mk, {}).get("templates", {}).get(num, {}).get("qty", 0)
-            if qty > 0:
-                avail.append(num)
-    # remove old summary
+
+    avail, hidden = _calc_tpl_avail(mk, ck)
+
     safe_delete(bot, chat_id, ORD[chat_id]["mid"])
-    # send collages above summary
-    img_ids = []
+
+    img_ids: list[int] = []
     colls = tmpl_def.get("collages", [])
     if colls:
         media = [types.InputMediaPhoto(fid) for fid in colls[:5]]
@@ -378,8 +418,16 @@ def _prompt_templates(chat_id: int):
         except Exception:
             pass
     ORD[chat_id]["tpl_img_ids"] = img_ids
+
+    merch_name = s.get("merch", {}).get(mk, {}).get("name_ru", mk)
+    color_name = s.get("merch", {}).get(mk, {}).get("colors", {}).get(ck, {}).get("name_ru", ck)
+
     if not avail:
-        msg = bot.send_message(chat_id, "Доступных макетов нет.")
+        msg = bot.send_message(
+            chat_id,
+            f"⚠️ Нет доступных макетов для {merch_name} / {color_name}. "
+            "Измените параметры или проверьте настройки макетов.",
+        )
         ORD[chat_id]["mid"] = msg.message_id
         _prompt_comment_phone(chat_id)
         return
@@ -392,6 +440,7 @@ def _prompt_templates(chat_id: int):
     msg = bot.send_message(chat_id, "...")
     ORD[chat_id]["mid"] = msg.message_id
     ORD[chat_id]["avail_tpls"] = avail
+    ORD[chat_id]["hidden_tpls"] = hidden
     ORD[chat_id]["selected_tpls"] = []
     max_global = s.get("layouts", {}).get("max_per_order", len(avail))
     ORD[chat_id]["tpl_limit"] = min(tmpl_def.get("limit", len(avail)), max_global)
@@ -402,7 +451,20 @@ def _prompt_templates(chat_id: int):
 def order_tpl_cb(c: types.CallbackQuery):
     chat_id = c.message.chat.id
     if c.data == "order:tpl_done":
-        ORD[chat_id]["templates"] = ", ".join(sorted(set(ORD[chat_id].get("selected_tpls", [])))) or "Без макета"
+        mk = ORD[chat_id]["merch"]; ck = ORD[chat_id]["color"]
+        avail, hidden = _calc_tpl_avail(mk, ck)
+        ORD[chat_id]["avail_tpls"] = avail
+        ORD[chat_id]["hidden_tpls"] = hidden
+        sel = ORD[chat_id].get("selected_tpls", [])
+        invalid = [t for t in sel if t not in avail]
+        if invalid:
+            for t in invalid:
+                if t in sel:
+                    sel.remove(t)
+            bot.send_message(chat_id, f"⚠️ Макет {invalid[0]} недоступен. Обновили список.")
+            _render_tpl_step(chat_id)
+            return
+        ORD[chat_id]["templates"] = ", ".join(sorted(set(sel))) or "Без макета"
         _prompt_comment_phone(chat_id)
         return
     if c.data == "order:tpl_clear":
@@ -415,6 +477,24 @@ def order_tpl_cb(c: types.CallbackQuery):
         ORD[chat_id]["tpl_page"] = max(0, ORD[chat_id].get("tpl_page", 0) + delta)
         bot.answer_callback_query(c.id)
         _render_tpl_step(chat_id)
+        return
+    if c.data == "order:tpl_hidden":
+        hidden = ORD[chat_id].get("hidden_tpls") or {}
+        if hidden:
+            lines = ["Скрытые макеты (причины):"]
+            for n, reason in hidden.items():
+                lines.append(f"• {n} — {reason}")
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("Скрыть причины", callback_data="order:tpl_hidden_close"))
+            msg = bot.send_message(chat_id, "\n".join(lines), reply_markup=kb)
+            ORD[chat_id]["hidden_msg"] = msg.message_id
+        bot.answer_callback_query(c.id)
+        return
+    if c.data == "order:tpl_hidden_close":
+        mid = ORD[chat_id].pop("hidden_msg", None)
+        if mid:
+            safe_delete(bot, chat_id, mid)
+        bot.answer_callback_query(c.id)
         return
     n = c.data.split(":")[2]
     lst = ORD[chat_id].setdefault("selected_tpls", [])
