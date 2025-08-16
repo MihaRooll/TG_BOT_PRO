@@ -8,10 +8,13 @@ from bot import bot
 from utils.tg import color_name_ru
 
 # Состояние мастера по chat_id
-WIZ: Dict[int, Dict[str, Any]] = {}  # {"anchor_id", "stage", "data", "_sig"}
+WIZ: Dict[int, Dict[str, Any]] = {}  # {"anchor_id", "stage", "data", "_sig", "flow_origin"}
 
 def ensure(chat_id: int, anchor_id: int | None = None):
-    state = WIZ.setdefault(chat_id, {"anchor_id": None, "stage": "home", "data": {}, "_sig": None})
+    state = WIZ.setdefault(
+        chat_id,
+        {"anchor_id": None, "stage": "home", "data": {}, "_sig": None, "flow_origin": None},
+    )
     if anchor_id:
         if not state["anchor_id"] or anchor_id > state["anchor_id"]:
             state["anchor_id"] = anchor_id
@@ -128,7 +131,7 @@ def home_text(d: dict) -> str:
 
     inv_on = bool(inv_merch or inv_letters or inv_numbers or inv_tmpls)
     block.append(f"📦 Остатки [{_on_off(inv_on)}]  ")
-    block.append(f"   ├─ Размеры: {'✅ — внесли' if bool(inv_merch) else '— не внесли'}  ")
+    block.append(f"   ├─ Мерч: {'✅ — внесли' if bool(inv_merch) else '— не внесли'}  ")
     block.append(f"   ├─ Буквы: {'✅ — внесли' if bool(inv_letters) else '— не внесли'}  ")
     block.append(f"   ├─ Цифры: {'✅ — внесли' if bool(inv_numbers) else '— не внесли'}  ")
     block.append(f"   └─ Макеты: {'✅ — внесли' if bool(inv_tmpls) else '— не внесли'}  ")

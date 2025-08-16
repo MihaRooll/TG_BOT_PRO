@@ -10,7 +10,7 @@ from . import A2_Letters  as L
 from . import A4_TextPalette as P
 from . import A5_MapTextColors as MAP
 from . import A6_TemplatesNumbers as TNUM
-from . import A7_TemplatesColors  as TCOL
+from . import A7_TemplatesMatrix  as TMX
 from . import A8_TemplatesCollages as TCOLL
 from . import A9_InventorySizes   as INV
 from services.settings import get_settings
@@ -19,7 +19,7 @@ from services.settings import get_settings
 def render_templates_home(chat_id: int) -> None:
     data = WIZ[chat_id]["data"]
     tmpl = data.get("templates", {})
-    inv_tmpls = data.get("_inv_tmpls", {})
+    WIZ[chat_id]["flow_origin"] = None
 
     def _st(done: bool, partial: bool = False) -> str:
         if done:
@@ -42,8 +42,6 @@ def render_templates_home(chat_id: int) -> None:
     imgs_have = sum(1 for v in tmpl.values() if v.get("collages"))
     all_imgs = imgs_total and imgs_have == imgs_total
     has_imgs = imgs_have > 0
-
-    has_qty = bool(inv_tmpls)
     layouts = data.setdefault(
         "layouts", get_settings().get("layouts", {"max_per_order": 3, "selected_indicator": "🟩"})
     )
@@ -52,7 +50,6 @@ def render_templates_home(chat_id: int) -> None:
     lines = [
         f"{_st(has_nums)} Номера: {'добавлены' if has_nums else 'нет'}",
         f"{_st(all_colored, has_colors and not all_colored)} Цвета: {'настроены' if all_colored else ('не все настроены' if has_colors else 'нет')}",
-        f"{_st(has_qty)} Кол-во: {'задано' if has_qty else 'не задано'}",
         f"{_st(all_imgs, has_imgs and not all_imgs)} Изображения: {'загружены' if all_imgs else ('частично' if has_imgs else 'нет')}",
         f"📌 Лимит на заказ: {max_per}",
         f"{indicator} Смайлик выбора",
@@ -60,7 +57,6 @@ def render_templates_home(chat_id: int) -> None:
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(types.InlineKeyboardButton("Номера", callback_data="setup:tmpl_nums"))
     kb.add(types.InlineKeyboardButton("Цвета", callback_data="setup:tmpl_map"))
-    kb.add(types.InlineKeyboardButton("Кол-во", callback_data="setup:tmpl_qty"))
     kb.add(types.InlineKeyboardButton("Изображения", callback_data="setup:tmpl_collages"))
     kb.add(types.InlineKeyboardButton("Лимит на заказ", callback_data="setup:tmpl_limit"))
     kb.add(types.InlineKeyboardButton("Смайлик выбора", callback_data="setup:tmpl_indicator"))
@@ -155,6 +151,8 @@ def setup_router(c: types.CallbackQuery):
 
     # --- Step 3: Templates ---
     if cmd == "tmpls":                 render_templates_home(chat_id); return
+    if cmd == "tmpl_inv":              WIZ[chat_id]["flow_origin"] = "step3"; INV.open_inventory_templates(chat_id); return
+    if cmd == "tmpl_back":             WIZ[chat_id]["flow_origin"] = None; render_templates_home(chat_id); return
     if cmd == "tmpl_nums":
         kb = types.InlineKeyboardMarkup(row_width=1)
         d = WIZ[chat_id]["data"]
@@ -177,22 +175,25 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "tmpl_map":
         kb = types.InlineKeyboardMarkup(row_width=1)
         d = WIZ[chat_id]["data"]
-        kb.add(types.InlineKeyboardButton("Глобально (все мерчи)", callback_data="setup:tmpl_map_global"))
         for mk, mi in d.get("merch", {}).items():
-            kb.add(types.InlineKeyboardButton(mi['name_ru'], callback_data=f"setup:tmpl_map_for:{mk}"))
+            kb.add(types.InlineKeyboardButton(mi['name_ru'], callback_data=f"setup:matrix_start:{mk}"))
         kb.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="setup:tmpls"))
-        edit(chat_id, "Шаг 3/4. Выберите вид мерча для настройки цветов.", kb)
+        edit(chat_id, "Шаг 3/4. Выберите мерч для настройки макетов и цветов.", kb)
         WIZ[chat_id]["stage"] = "tmpl_map_pick"; return
-    if cmd == "tmpl_map_global":
-        mks = list(WIZ[chat_id]["data"].get("merch", {}).keys())
-        TCOL.start_for_merchs(chat_id, mks, done_cb=render_templates_home); return
-    if cmd == "tmpl_map_for":
-        TCOL.start_for_merchs(chat_id, [rest[0]], done_cb=render_templates_home); return
-    if cmd == "tmpl_color_toggle":     TCOL.toggle_color(chat_id, rest[0], rest[1], rest[2]); return
-    if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
-    if cmd == "tmpl_color_add":        TCOL.ask_add_many(chat_id, rest[0], rest[1]); return
-    if cmd == "tmpl_color_clear":      TCOL.clear_all(chat_id, rest[0], rest[1]); return
-    if cmd == "tmpl_qty":              INV.open_inventory_templates(chat_id); return
+    if cmd == "matrix_start":        TMX.start_matrix(chat_id, rest[0], c.from_user); return
+    if cmd == "matrix_toggle":       TMX.toggle_cell(chat_id, rest[0], rest[1], rest[2], int(rest[3])); return
+    if cmd == "matrix_col":          TMX.toggle_column(chat_id, rest[0], rest[1], int(rest[2])); return
+    if cmd == "matrix_page":         TMX.change_page(chat_id, int(rest[0])); return
+    if cmd == "matrix_page_all":     TMX.page_select(chat_id, rest[0], int(rest[1]), True); return
+    if cmd == "matrix_page_none":    TMX.page_select(chat_id, rest[0], int(rest[1]), False); return
+    if cmd == "matrix_inherit":      TMX.inherit_global(chat_id, rest[0]); return
+    if cmd in ("matrix_reset", "matrix_reset_global"): TMX.reset_to_global(chat_id, rest[0]); return
+    if cmd == "matrix_apply_global": TMX.apply_global_to_merch(chat_id, rest[0]); return
+    if cmd == "matrix_csv_export":   TMX.export_csv(chat_id, TMX._matrix_key(chat_id).mk); return
+    if cmd == "matrix_back":         render_templates_home(chat_id); return
+    if cmd.startswith("matrix_group"):
+        # handled in text handler
+        return
     if cmd == "tmpl_collages":
         kb = types.InlineKeyboardMarkup(row_width=1)
         d = WIZ[chat_id]["data"]
@@ -251,7 +252,7 @@ def setup_router(c: types.CallbackQuery):
         WIZ[chat_id]["stage"] = "tmpl_indicator"; return
 
     # --- Step 4: Inventory ---
-    if cmd == "inv":                    INV.open_inventory_home(chat_id); return
+    if cmd == "inv":                    WIZ[chat_id]["flow_origin"] = None; INV.open_inventory_home(chat_id); return
     if cmd == "inv_merch":              INV.open_merch_list(chat_id); return
     if cmd == "inv_sizes_colors":       INV.open_colors(chat_id, rest[0]); return
     if cmd == "inv_sizes_sizes":        INV.open_sizes(chat_id, rest[0], rest[1]); return
@@ -279,7 +280,9 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "inv_tmpl_qty":           INV.open_template_qty_spinner(chat_id, rest[0], rest[1]); return
     if cmd == "inv_tmpl_adj":           INV.adjust_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
     if cmd == "inv_tmpl_set":           INV.set_template_qty(chat_id, rest[0], rest[1], int(rest[2])); return
-    if cmd == "inv_tmpl_save":          INV.save_template_qty(chat_id, rest[0], rest[1]); return
+    if cmd == "inv_tmpl_save":
+        bot.answer_callback_query(c.id, "✅ Сохранено. Остались в «Остатки → Макеты».")
+        INV.save_template_qty(chat_id, rest[0], rest[1]); return
     if cmd == "inv_tmpl_apply_all":     INV.apply_all_templates(chat_id, rest[0]); return
     if cmd == "inv_tmpl_next":
         scope = WIZ[chat_id]["data"].get("_inv_tmpl_scope", [])
@@ -373,9 +376,10 @@ def _during_setup(m: types.Message):
             TCOLL.resume(chat_id)
         else:
             TCOLL.reset_one(chat_id, mk)
-    elif st.startswith("tmpl_color_add:") and text:
-        _, mk, num = st.split(":")
-        from .A7_TemplatesColors import handle_add_many; handle_add_many(chat_id, mk, num, text)
+    elif st.startswith("matrix_group:") and text:
+        _, mk, ck = st.split(":")
+        from .A7_TemplatesMatrix import handle_group_apply
+        handle_group_apply(chat_id, mk, ck, text)
     # --- лимиты по шагам ---
     elif st == "limits_len" and text:
         try:
