@@ -128,7 +128,7 @@ def home_text(d: dict) -> str:
 
     inv_on = bool(inv_merch or inv_letters or inv_numbers or inv_tmpls)
     block.append(f"📦 Остатки [{_on_off(inv_on)}]  ")
-    block.append(f"   ├─ Размеры: {'✅ — внесли' if bool(inv_merch) else '— не внесли'}  ")
+    block.append(f"   ├─ Мерч: {'✅ — внесли' if bool(inv_merch) else '— не внесли'}  ")
     block.append(f"   ├─ Буквы: {'✅ — внесли' if bool(inv_letters) else '— не внесли'}  ")
     block.append(f"   ├─ Цифры: {'✅ — внесли' if bool(inv_numbers) else '— не внесли'}  ")
     block.append(f"   └─ Макеты: {'✅ — внесли' if bool(inv_tmpls) else '— не внесли'}  ")
