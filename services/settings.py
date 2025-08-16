@@ -28,6 +28,9 @@ def get_settings() -> Dict[str, Any]:
                 "max_per_order": 3,
                 "selected_indicator": "🟩"
             },
+            "orders": {
+                "layouts_missing_stock": "show"
+            },
             "admins": [],
             "coordinators": [],
             "promoters": []
@@ -35,11 +38,13 @@ def get_settings() -> Dict[str, Any]:
     else:
         data.setdefault("color_names", {})
         data.setdefault("layouts", {})
+        data.setdefault("orders", {})
         data.setdefault("admins", [])
         data.setdefault("coordinators", [])
         data.setdefault("promoters", [])
         data["layouts"].setdefault("max_per_order", 3)
         data["layouts"].setdefault("selected_indicator", "🟩")
+        data["orders"].setdefault("layouts_missing_stock", "show")
     return data
 
 def save_settings(data: Dict[str, Any]) -> None:
