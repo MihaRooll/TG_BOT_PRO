@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import time, logging
+import time, logging, sys
 from requests.exceptions import ReadTimeout, ConnectionError
 from bot import bot
 from router import register_routes
@@ -8,6 +8,11 @@ log = logging.getLogger("runner")
 
 def run_bot() -> None:
     register_routes()
+    try:
+        bot.get_me()
+    except Exception:
+        print("❌ Telegram auth failed. Check TG_Token.")
+        sys.exit(1)
     while True:
         try:
             bot.infinity_polling(

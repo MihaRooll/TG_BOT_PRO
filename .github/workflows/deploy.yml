@@ -43,6 +43,8 @@ jobs:
     needs: build-and-push-docker
     runs-on: [self-hosted, Windows, X64, tg-bot]
     timeout-minutes: 30
+    env:
+      TG_Token: ${{ secrets.TG_Token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +81,11 @@ jobs:
 
       - name: Up stack
         shell: powershell
-        run: docker compose -f compose.yml -p tg_bot_pro up -d --remove-orphans --no-build
+        env:
+          TG_Token: ${{ env.TG_Token }}
+        run: |
+          echo "::add-mask::${env:TG_Token}"
+          docker compose -f compose.yml -p tg_bot_pro up -d --remove-orphans --no-build
 
       # ===== ЛОГИ: сбор, маскировка, артефакт, комментарий к коммиту =====
       - name: Collect deploy logs (always)

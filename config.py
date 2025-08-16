@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
 import os
+import sys
 
-# === ВНИМАНИЕ: По просьбе пользователя ключи и токены захардкожены в проекте ===
-BOT_TOKEN = "6808182455:AAHbqvbj37m2x8Yu_N4MapqRk0gqlj7_EfY"
+def get_bot_token() -> str:
+    """Return bot token from environment and ensure it's present."""
+    token = os.getenv("TG_Token") or os.getenv("TG_TOKEN")
+    if not token:
+        print("❌ Bot token is missing. Provide env TG_Token (GitHub Secret).")
+        sys.exit(1)
+    print("✅ Token loaded from environment")
+    return token
 # Бэкапный ID общего чата (если не выполнен /bind_here). Может быть None — тогда попросим привязать.
 ADMIN_CHAT_ID = -1002076884561
 

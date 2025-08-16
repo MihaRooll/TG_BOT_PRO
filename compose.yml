@@ -5,8 +5,8 @@ services:
     container_name: tg-bot-pro
     restart: unless-stopped
     # Если нужно — добавь переменные/файлы окружения:
-    # environment:
-    #   - TZ=Europe/Moscow
-    #   - BOT_TOKEN=${BOT_TOKEN}
+    environment:
+      # - TZ=Europe/Moscow
+      - TG_Token=${TG_Token}
     # env_file:
     #   - .env

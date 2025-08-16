@@ -47,6 +47,8 @@ jobs:
     needs: build-and-push-pr
     runs-on: [self-hosted, Windows, X64, tg-bot]
     timeout-minutes: 30
+    env:
+      TG_Token: ${{ secrets.TG_Token }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,14 +88,19 @@ jobs:
               '  bot:',
               ('    image: ' + $env:IMAGE + ':pr-' + $env:PR_NUM + '-latest'),
               ('    container_name: tg-bot-pro-pr-' + $env:PR_NUM),
-              '    restart: unless-stopped'
+              '    restart: unless-stopped',
+              '    environment:',
+              '      - TG_Token=${TG_Token}'
             )
             Set-Content -Path 'compose.preview.yml' -Value $lines -Encoding UTF8
           }
 
       - name: Up preview stack
         shell: powershell
+        env:
+          TG_Token: ${{ env.TG_Token }}
         run: |
+          echo "::add-mask::${env:TG_Token}"
           docker compose -f compose.preview.yml -p tg_bot_pro_pr_$env:PR_NUM up -d --remove-orphans --no-build
 
       - name: Collect preview logs (always)
