@@ -14,14 +14,14 @@ def open_inventory_home(chat_id: int):
     inv_on = bool(inv_merch or inv_letters or inv_numbers or inv_tmpls)
     block = [
         f"📦 Остатки [✅ ВКЛ]{' ✅ — внесли' if inv_on else ' — не внесли'}",
-        f"├─ Размеры: {'✅ — внесли' if inv_merch else '— не внесли'}",
+        f"├─ Мерч: {'✅ — внесли' if inv_merch else '— не внесли'}",
         f"├─ Буквы: {'✅ — внесли' if inv_letters else '— не внесли'}",
         f"├─ Цифры: {'✅ — внесли' if inv_numbers else '— не внесли'}",
         f"└─ Макеты: {'✅ — внесли' if inv_tmpls else '— не внесли'}",
     ]
     block_txt = "\n".join(block)
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("Размеры", callback_data="setup:inv_merch"))
+    kb.add(types.InlineKeyboardButton("Мерч", callback_data="setup:inv_merch"))
     kb.add(types.InlineKeyboardButton("Буквы", callback_data="setup:inv_letters"))
     kb.add(types.InlineKeyboardButton("Цифры", callback_data="setup:inv_numbers"))
     kb.add(types.InlineKeyboardButton("Макеты", callback_data="setup:inv_templates"))

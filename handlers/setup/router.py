@@ -19,7 +19,6 @@ from services.settings import get_settings
 def render_templates_home(chat_id: int) -> None:
     data = WIZ[chat_id]["data"]
     tmpl = data.get("templates", {})
-    inv_tmpls = data.get("_inv_tmpls", {})
 
     def _st(done: bool, partial: bool = False) -> str:
         if done:
@@ -42,8 +41,6 @@ def render_templates_home(chat_id: int) -> None:
     imgs_have = sum(1 for v in tmpl.values() if v.get("collages"))
     all_imgs = imgs_total and imgs_have == imgs_total
     has_imgs = imgs_have > 0
-
-    has_qty = bool(inv_tmpls)
     layouts = data.setdefault(
         "layouts", get_settings().get("layouts", {"max_per_order": 3, "selected_indicator": "🟩"})
     )
@@ -52,7 +49,6 @@ def render_templates_home(chat_id: int) -> None:
     lines = [
         f"{_st(has_nums)} Номера: {'добавлены' if has_nums else 'нет'}",
         f"{_st(all_colored, has_colors and not all_colored)} Цвета: {'настроены' if all_colored else ('не все настроены' if has_colors else 'нет')}",
-        f"{_st(has_qty)} Кол-во: {'задано' if has_qty else 'не задано'}",
         f"{_st(all_imgs, has_imgs and not all_imgs)} Изображения: {'загружены' if all_imgs else ('частично' if has_imgs else 'нет')}",
         f"📌 Лимит на заказ: {max_per}",
         f"{indicator} Смайлик выбора",
@@ -60,7 +56,6 @@ def render_templates_home(chat_id: int) -> None:
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(types.InlineKeyboardButton("Номера", callback_data="setup:tmpl_nums"))
     kb.add(types.InlineKeyboardButton("Цвета", callback_data="setup:tmpl_map"))
-    kb.add(types.InlineKeyboardButton("Кол-во", callback_data="setup:tmpl_qty"))
     kb.add(types.InlineKeyboardButton("Изображения", callback_data="setup:tmpl_collages"))
     kb.add(types.InlineKeyboardButton("Лимит на заказ", callback_data="setup:tmpl_limit"))
     kb.add(types.InlineKeyboardButton("Смайлик выбора", callback_data="setup:tmpl_indicator"))
@@ -192,7 +187,6 @@ def setup_router(c: types.CallbackQuery):
     if cmd == "tmpl_color_next":       TCOL.next_template(chat_id, rest[0], rest[1]); return
     if cmd == "tmpl_color_add":        TCOL.ask_add_many(chat_id, rest[0], rest[1]); return
     if cmd == "tmpl_color_clear":      TCOL.clear_all(chat_id, rest[0], rest[1]); return
-    if cmd == "tmpl_qty":              INV.open_inventory_templates(chat_id); return
     if cmd == "tmpl_collages":
         kb = types.InlineKeyboardMarkup(row_width=1)
         d = WIZ[chat_id]["data"]
